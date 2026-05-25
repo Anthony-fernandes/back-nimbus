@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 try:
     import dj_database_url
@@ -47,16 +48,25 @@ except ModuleNotFoundError:
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-env = environ.Env(DEBUG=(bool, True))
+env = environ.Env(DEBUG=(bool, False))
 
 if (BASE_DIR / ".env").exists():
     env.read_env(BASE_DIR / ".env")
-else:
-    env.read_env(BASE_DIR / ".env.example")
 
-SECRET_KEY = env("SECRET_KEY", default="stratos-dev-secret-key")
-DEBUG = env.bool("DEBUG", default=True)
-ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["*"])
+DEBUG = env.bool("DEBUG", default=False)
+SECRET_KEY = env("SECRET_KEY", default="")
+if not SECRET_KEY:
+    if DEBUG:
+        SECRET_KEY = "django-insecure-local-dev-only"
+    else:
+        raise ImproperlyConfigured("SECRET_KEY environment variable is required when DEBUG=False.")
+
+ALLOWED_HOSTS = env.list(
+    "ALLOWED_HOSTS",
+    default=["localhost", "127.0.0.1"] if DEBUG else [],
+)
+if not ALLOWED_HOSTS and not DEBUG:
+    raise ImproperlyConfigured("ALLOWED_HOSTS environment variable is required when DEBUG=False.")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -84,6 +94,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -132,6 +143,15 @@ TIME_ZONE = "America/Fortaleza"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "users.User"
 
@@ -160,6 +180,11 @@ SIMPLE_JWT = {
 CORS_ALLOW_ALL_ORIGINS = env.bool("CORS_ALLOW_ALL_ORIGINS", default=False)
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+USE_X_FORWARDED_HOST = True
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "Stratos Suite API",
