@@ -55,6 +55,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, PermissionMap] = {
             "manage": True,
             "delete": True,
         },
+        "knowledge": {"view": True, "create": True, "edit": True, "manage": True, "delete": True, "publish": True},
+        "communication": {"view": True, "create": True, "moderate": True},
     },
     "TECHNICIAN": {
         "tickets": {
@@ -75,6 +77,8 @@ DEFAULT_ROLE_PERMISSIONS: dict[str, PermissionMap] = {
         "sprints": {"view": True},
         "clients": {"view": True},
         "categories": {"view": True},
+        "knowledge": {"view": True, "create": True, "edit": True},
+        "communication": {"view": True, "create": True},
     },
     "CLIENT": {
         "tickets": {
