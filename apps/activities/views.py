@@ -4,8 +4,20 @@ from rest_framework.permissions import IsAuthenticated
 
 from common.access import normalize_user_role, user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
-from .models import Activity, ActivityTag, ActivityTimeEntry
-from .serializers import ActivitySerializer, ActivityTagSerializer, ActivityTimeEntrySerializer
+from .models import (
+    Activity,
+    ActivityAttachment,
+    ActivityComment,
+    ActivityTag,
+    ActivityTimeEntry,
+)
+from .serializers import (
+    ActivityAttachmentSerializer,
+    ActivityCommentSerializer,
+    ActivitySerializer,
+    ActivityTagSerializer,
+    ActivityTimeEntrySerializer,
+)
 
 
 class ActivityViewSet(CompanyScopedModelViewSet):
@@ -124,4 +136,94 @@ class ActivityTimeEntryViewSet(CompanyScopedModelViewSet):
     def perform_destroy(self, instance):
         if not user_has_permission(self.request.user, "activities.trackTime"):
             raise PermissionDenied("Seu perfil nao pode excluir apontamentos.")
+        instance.delete()
+
+
+class ActivityCommentViewSet(CompanyScopedModelViewSet):
+    queryset = ActivityComment.objects.all()
+    serializer_class = ActivityCommentSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["activity", "is_internal", "author"]
+    search_fields = ["body", "author_name"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        if not user_has_any_permission(self.request.user, ["activities.view", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode consultar comentarios de atividades.")
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        if not user_has_any_permission(
+            self.request.user, ["activities.edit", "activities.manage", "activities.create"]
+        ):
+            raise PermissionDenied("Seu perfil nao pode comentar atividades.")
+        from common.audit import record_audit
+        from apps.notifications.services import notify
+
+        comment = serializer.save(
+            company=self.request.user.company,
+            author=self.request.user,
+            author_name=self.request.user.full_name_or_username,
+        )
+        record_audit(
+            action="activity.comment",
+            actor=self.request.user,
+            instance=comment.activity,
+            description="Comentario adicionado a atividade.",
+            origin="activities",
+            request=self.request,
+        )
+        assignee = getattr(comment.activity, "assignee", None)
+        if assignee:
+            notify(
+                assignee,
+                title=f"Novo comentario na atividade: {comment.activity.title}",
+                message=comment.body,
+                event="activity.comment",
+                actor=self.request.user,
+                company=self.request.user.company,
+                link=f"atividades/{comment.activity_id}",
+                entity=comment.activity,
+                origin="activities",
+            )
+
+    def perform_update(self, serializer):
+        if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode alterar comentarios de atividades.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode excluir comentarios de atividades.")
+        instance.delete()
+
+
+class ActivityAttachmentViewSet(CompanyScopedModelViewSet):
+    queryset = ActivityAttachment.objects.all()
+    serializer_class = ActivityAttachmentSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["activity", "uploaded_by"]
+    search_fields = ["name"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        if not user_has_any_permission(self.request.user, ["activities.view", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode consultar anexos de atividades.")
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        if not user_has_any_permission(
+            self.request.user, ["activities.edit", "activities.manage", "activities.create"]
+        ):
+            raise PermissionDenied("Seu perfil nao pode anexar arquivos a atividades.")
+        serializer.save(company=self.request.user.company, uploaded_by=self.request.user)
+
+    def perform_update(self, serializer):
+        if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode alterar anexos de atividades.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode excluir anexos de atividades.")
         instance.delete()

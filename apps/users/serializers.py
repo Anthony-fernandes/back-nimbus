@@ -8,7 +8,47 @@ from common.access import (
     permission_map_from_keys,
     resolve_user_permissions,
 )
-from .models import PermissionBlock, User, UserOrganization
+from .models import Department, PermissionBlock, Position, User, UserOrganization
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    manager_name = serializers.CharField(source="manager.full_name_or_username", read_only=True)
+    member_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Department
+        fields = [
+            "id",
+            "company",
+            "name",
+            "description",
+            "manager",
+            "manager_name",
+            "member_count",
+            "active",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+    def get_member_count(self, obj):
+        return obj.members.count()
+
+
+class PositionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Position
+        fields = [
+            "id",
+            "company",
+            "name",
+            "description",
+            "auto_approval",
+            "active",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
 
 
 class UserOrganizationSerializer(serializers.ModelSerializer):
@@ -67,6 +107,10 @@ class UserSerializer(serializers.ModelSerializer):
     denied_permissions = serializers.JSONField(required=False)
     resolved_permissions = serializers.SerializerMethodField()
     password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    department_name = serializers.CharField(source="department.name", read_only=True)
+    position_name = serializers.CharField(source="position.name", read_only=True)
+    supervisor_name = serializers.CharField(source="supervisor.full_name_or_username", read_only=True)
+    manager_name = serializers.CharField(source="manager.full_name_or_username", read_only=True)
 
     class Meta:
         model = User
@@ -91,6 +135,16 @@ class UserSerializer(serializers.ModelSerializer):
             "used_hours",
             "hourly_cost",
             "technical_group",
+            "department",
+            "department_name",
+            "position",
+            "position_name",
+            "supervisor",
+            "supervisor_name",
+            "manager",
+            "manager_name",
+            "approval_mode",
+            "is_service_desk_approver",
             "permissions_json",
             "granted_permissions",
             "denied_permissions",

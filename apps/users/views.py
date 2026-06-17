@@ -3,8 +3,63 @@ from rest_framework.permissions import IsAuthenticated
 
 from common.access import user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
-from .models import PermissionBlock, User
-from .serializers import PermissionBlockSerializer, UserSerializer
+from .models import Department, PermissionBlock, Position, User
+from .serializers import (
+    DepartmentSerializer,
+    PermissionBlockSerializer,
+    PositionSerializer,
+    UserSerializer,
+)
+
+
+class _OrgStructureViewSet(CompanyScopedModelViewSet):
+    """Base para cadastros da estrutura organizacional (depto/cargo)."""
+
+    permission_classes = [IsAuthenticated]
+    ordering_fields = "__all__"
+
+    def _ensure_can_view(self):
+        if user_has_any_permission(
+            self.request.user,
+            ["users.view", "users.manage", "settings.view", "settings.edit"],
+        ):
+            return
+        raise PermissionDenied("Seu perfil nao pode consultar a estrutura organizacional.")
+
+    def _ensure_can_manage(self):
+        if user_has_any_permission(self.request.user, ["users.manage", "settings.edit"]):
+            return
+        raise PermissionDenied("Seu perfil nao pode alterar a estrutura organizacional.")
+
+    def get_queryset(self):
+        self._ensure_can_view()
+        return super().get_queryset()
+
+    def perform_create(self, serializer):
+        self._ensure_can_manage()
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._ensure_can_manage()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_can_manage()
+        instance.delete()
+
+
+class DepartmentViewSet(_OrgStructureViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    filterset_fields = ["active", "company", "manager"]
+    search_fields = ["name", "description"]
+
+
+class PositionViewSet(_OrgStructureViewSet):
+    queryset = Position.objects.all()
+    serializer_class = PositionSerializer
+    filterset_fields = ["active", "auto_approval", "company"]
+    search_fields = ["name", "description"]
 
 
 class UserViewSet(CompanyScopedModelViewSet):

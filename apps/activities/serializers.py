@@ -1,5 +1,57 @@
 from rest_framework import serializers
-from .models import Activity, ActivityTag, ActivityTimeEntry
+from .models import (
+    Activity,
+    ActivityAttachment,
+    ActivityComment,
+    ActivityTag,
+    ActivityTimeEntry,
+)
+
+
+class ActivityCommentSerializer(serializers.ModelSerializer):
+    author_display = serializers.CharField(source="author.full_name_or_username", read_only=True)
+
+    class Meta:
+        model = ActivityComment
+        fields = [
+            "id",
+            "company",
+            "activity",
+            "author",
+            "author_name",
+            "author_display",
+            "body",
+            "is_internal",
+            "source",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "author": {"required": False, "read_only": True},
+            "source": {"required": False},
+        }
+
+
+class ActivityAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityAttachment
+        fields = [
+            "id",
+            "company",
+            "activity",
+            "uploaded_by",
+            "name",
+            "url",
+            "content_type",
+            "size",
+            "source",
+            "created_at",
+        ]
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "uploaded_by": {"required": False, "read_only": True},
+        }
 
 class ActivitySerializer(serializers.ModelSerializer):
     assignee_name = serializers.CharField(source="assignee.full_name_or_username", read_only=True)

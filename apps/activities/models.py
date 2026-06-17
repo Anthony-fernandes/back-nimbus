@@ -47,6 +47,51 @@ class ActivityTag(BaseModel):
         return self.name
 
 
+class ActivityComment(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_comments")
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activity_comments",
+    )
+    author_name = models.CharField(max_length=255, blank=True, default="")
+    body = models.TextField(blank=True, default="")
+    is_internal = models.BooleanField(default=False)
+    source = models.CharField(max_length=80, blank=True, default="")
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.activity_id} - {self.author_name}"
+
+
+class ActivityAttachment(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_attachments")
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="attachments")
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="activity_attachments",
+    )
+    name = models.CharField(max_length=255)
+    url = models.CharField(max_length=500, blank=True, default="")
+    content_type = models.CharField(max_length=120, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    source = models.CharField(max_length=80, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+
 class ActivityTimeEntry(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_time_entries")
     activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="time_entries")

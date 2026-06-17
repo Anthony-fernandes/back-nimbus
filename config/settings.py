@@ -89,6 +89,8 @@ INSTALLED_APPS = [
     "apps.sprints",
     "apps.activities",
     "apps.dashboard",
+    "apps.notifications",
+    "apps.audit",
 ]
 
 MIDDLEWARE = [
@@ -191,3 +193,22 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "API REST para gestão de clientes, projetos, chamados, sprints, atividades e dashboard.",
     "VERSION": "1.0.0",
 }
+
+# Notificacao por e-mail centralizada. Em desenvolvimento usa o backend de
+# console; em producao configure SMTP via variaveis de ambiente.
+EMAIL_BACKEND = env(
+    "EMAIL_BACKEND",
+    default="django.core.mail.backends.console.EmailBackend",
+)
+EMAIL_HOST = env("EMAIL_HOST", default="")
+EMAIL_PORT = int(env("EMAIL_PORT", default="587") or 587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env(
+    "DEFAULT_FROM_EMAIL",
+    default="Stratos Suite <no-reply@stratos.local>",
+)
+
+# URL base do frontend para compor links nas notificacoes por e-mail.
+PLATFORM_WEB_URL = env("PLATFORM_WEB_URL", default="")

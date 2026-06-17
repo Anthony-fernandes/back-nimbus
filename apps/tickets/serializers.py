@@ -2,7 +2,14 @@ from rest_framework import serializers
 
 from apps.users.models import UserOrganization
 from common.access import normalize_user_role
-from .models import Ticket, TicketCategory, TicketWorkflowStatus
+from .models import (
+    Ticket,
+    TicketApproval,
+    TicketAttachment,
+    TicketCategory,
+    TicketComment,
+    TicketWorkflowStatus,
+)
 
 
 INTERNAL_TICKET_ROLES = {
@@ -44,6 +51,14 @@ class TicketSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     technician_names = serializers.SerializerMethodField()
+    current_approver_name = serializers.CharField(
+        source="current_approver.full_name_or_username",
+        read_only=True,
+    )
+    approved_by_name = serializers.CharField(
+        source="approved_by.full_name_or_username",
+        read_only=True,
+    )
 
     class Meta:
         model = Ticket
@@ -88,10 +103,32 @@ class TicketSerializer(serializers.ModelSerializer):
             "done_hours",
             "tags",
             "checklist",
+            "approval_status",
+            "approval_route",
+            "approval_reason",
+            "current_approver",
+            "current_approver_name",
+            "approved_by",
+            "approved_by_name",
+            "approved_at",
+            "converted_activity",
+            "converted_at",
+            "conversion_reason",
             "created_at",
             "updated_at",
         ]
-        extra_kwargs = {"company": {"required": False, "read_only": True}}
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "approval_status": {"read_only": True},
+            "approval_route": {"read_only": True},
+            "approval_reason": {"read_only": True},
+            "current_approver": {"read_only": True},
+            "approved_by": {"read_only": True},
+            "approved_at": {"read_only": True},
+            "converted_activity": {"read_only": True},
+            "converted_at": {"read_only": True},
+            "conversion_reason": {"read_only": True},
+        }
 
     def get_technician_names(self, obj):
         return [user.full_name_or_username for user in obj.technicians.all()]
@@ -233,6 +270,68 @@ class TicketSerializer(serializers.ModelSerializer):
 
         self._sync_ticket_relations(instance)
         return instance
+
+
+class TicketApprovalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketApproval
+        fields = [
+            "id",
+            "company",
+            "ticket",
+            "approver",
+            "approver_name",
+            "decision",
+            "route",
+            "comment",
+            "decided_at",
+            "created_at",
+        ]
+        read_only_fields = fields
+
+
+class TicketCommentSerializer(serializers.ModelSerializer):
+    author_display = serializers.CharField(source="author.full_name_or_username", read_only=True)
+
+    class Meta:
+        model = TicketComment
+        fields = [
+            "id",
+            "company",
+            "ticket",
+            "author",
+            "author_name",
+            "author_display",
+            "body",
+            "is_internal",
+            "created_at",
+            "updated_at",
+        ]
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "author": {"required": False, "read_only": True},
+            "author_name": {"required": False},
+        }
+
+
+class TicketAttachmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketAttachment
+        fields = [
+            "id",
+            "company",
+            "ticket",
+            "uploaded_by",
+            "name",
+            "url",
+            "content_type",
+            "size",
+            "created_at",
+        ]
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "uploaded_by": {"required": False, "read_only": True},
+        }
 
 
 class TicketCategorySerializer(serializers.ModelSerializer):

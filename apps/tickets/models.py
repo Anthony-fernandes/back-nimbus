@@ -16,7 +16,12 @@ class Ticket(BaseModel):
     ]
     STATUS = [
         ("Aberto", "Aberto"),
+        ("Aguardando Aprovacao", "Aguardando Aprovacao"),
+        ("Aprovado", "Aprovado"),
+        ("Reprovado", "Reprovado"),
+        ("Ajustes Solicitados", "Ajustes Solicitados"),
         ("Triagem", "Triagem"),
+        ("Backlog", "Backlog"),
         ("Aguardando atendimento", "Aguardando atendimento"),
         ("Em atendimento", "Em atendimento"),
         ("Aguardando cliente", "Aguardando cliente"),
@@ -24,6 +29,22 @@ class Ticket(BaseModel):
         ("Pausado", "Pausado"),
         ("Cancelado", "Cancelado"),
         ("Finalizado", "Finalizado"),
+        ("Convertido em Atividade de Projeto", "Convertido em Atividade de Projeto"),
+    ]
+
+    APPROVAL_STATUS = [
+        ("Nao requerido", "Nao requerido"),
+        ("Aguardando Aprovacao", "Aguardando Aprovacao"),
+        ("Aprovado", "Aprovado"),
+        ("Reprovado", "Reprovado"),
+        ("Ajustes Solicitados", "Ajustes Solicitados"),
+    ]
+
+    APPROVAL_ROUTE = [
+        ("NONE", "Sem aprovacao"),
+        ("APPROVER", "Aprovador vinculado"),
+        ("SERVICE_DESK", "Equipe de chamados"),
+        ("AUTO", "Automatica por cargo"),
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="tickets")
@@ -81,6 +102,37 @@ class Ticket(BaseModel):
     tags = models.JSONField(default=list, blank=True)
     checklist = models.JSONField(default=list, blank=True)
 
+    # Fluxo de aprovacao
+    approval_status = models.CharField(max_length=40, choices=APPROVAL_STATUS, default="Nao requerido")
+    approval_route = models.CharField(max_length=20, choices=APPROVAL_ROUTE, default="NONE")
+    approval_reason = models.TextField(blank=True, default="")
+    current_approver = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets_awaiting_approval",
+    )
+    approved_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="approved_tickets",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+
+    # Conversao em atividade de projeto
+    converted_activity = models.ForeignKey(
+        "activities.Activity",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_tickets",
+    )
+    converted_at = models.DateTimeField(null=True, blank=True)
+    conversion_reason = models.CharField(max_length=255, blank=True, default="")
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -92,6 +144,82 @@ class Ticket(BaseModel):
 
     def __str__(self):
         return self.code or self.title
+
+
+class TicketApproval(BaseModel):
+    """Historico de cada decisao de aprovacao de um chamado."""
+
+    DECISION = [
+        ("PENDENTE", "Pendente"),
+        ("APROVADO", "Aprovado"),
+        ("REPROVADO", "Reprovado"),
+        ("AJUSTES", "Ajustes solicitados"),
+    ]
+    ROUTE = Ticket.APPROVAL_ROUTE
+
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_approvals")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="approvals")
+    approver = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_approval_decisions",
+    )
+    approver_name = models.CharField(max_length=255, blank=True, default="")
+    decision = models.CharField(max_length=20, choices=DECISION, default="PENDENTE")
+    route = models.CharField(max_length=20, choices=ROUTE, default="APPROVER")
+    comment = models.TextField(blank=True, default="")
+    decided_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.ticket_id} - {self.decision}"
+
+
+class TicketComment(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_comments")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="comments")
+    author = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_comments",
+    )
+    author_name = models.CharField(max_length=255, blank=True, default="")
+    body = models.TextField(blank=True, default="")
+    is_internal = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.ticket_id} - {self.author_name}"
+
+
+class TicketAttachment(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_attachments")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="attachments")
+    uploaded_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="ticket_attachments",
+    )
+    name = models.CharField(max_length=255)
+    url = models.CharField(max_length=500, blank=True, default="")
+    content_type = models.CharField(max_length=120, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
 
 
 class TicketCategory(BaseModel):

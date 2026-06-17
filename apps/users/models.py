@@ -13,6 +13,14 @@ class User(AbstractUser):
         ("CLIENT", "Client"),
     ]
 
+    APPROVAL_MODE_CHOICES = [
+        ("INHERITED", "Aprovador vinculado"),
+        ("SUPERVISOR", "Supervisor imediato"),
+        ("MANAGER", "Gerente responsavel"),
+        ("AUTO", "Aprovacao automatica"),
+        ("SERVICE_DESK", "Equipe de chamados"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True, related_name="users")
     client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="portal_users")
     role = models.CharField(max_length=30, choices=ROLE_CHOICES, default="ADMIN")
@@ -23,6 +31,39 @@ class User(AbstractUser):
     used_hours = models.PositiveIntegerField(default=0)
     hourly_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     technical_group = models.CharField(max_length=120, blank=True, default="")
+
+    # Estrutura organizacional corporativa
+    department = models.ForeignKey(
+        "Department",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="members",
+    )
+    position = models.ForeignKey(
+        "Position",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users",
+    )
+    supervisor = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supervised_users",
+    )
+    manager = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_users",
+    )
+    approval_mode = models.CharField(max_length=20, choices=APPROVAL_MODE_CHOICES, default="INHERITED")
+    is_service_desk_approver = models.BooleanField(default=False)
+
     permissions_json = models.JSONField(default=list, blank=True)
     granted_permissions = models.JSONField(default=dict, blank=True)
     denied_permissions = models.JSONField(default=dict, blank=True)
@@ -35,6 +76,52 @@ class User(AbstractUser):
     @property
     def full_name_or_username(self):
         return self.get_full_name() or self.username or self.email
+
+
+class Department(BaseModel):
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="departments",
+    )
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True, default="")
+    manager = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="managed_departments",
+    )
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = ("company", "name")
+
+    def __str__(self):
+        return self.name
+
+
+class Position(BaseModel):
+    """Cargo corporativo. Cargos com ``auto_approval`` aprovam chamados automaticamente."""
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.CASCADE,
+        related_name="positions",
+    )
+    name = models.CharField(max_length=120)
+    description = models.TextField(blank=True, default="")
+    auto_approval = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        unique_together = ("company", "name")
+
+    def __str__(self):
+        return self.name
 
 
 class PermissionBlock(BaseModel):
