@@ -8,7 +8,7 @@ urlpatterns = [
     path("api/schema/", SpectacularAPIView.as_view(permission_classes=[IsAuthenticated]), name="schema"),
     path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema", permission_classes=[IsAuthenticated])),
     path("api/auth/", include("apps.authentication.urls")),
-    path("api/dashboard/", include("apps.dashboard.urls")),
+    path("api/", include("apps.dashboard.urls")),
     path("api/companies/", include("apps.companies.urls")),
     path("api/users/", include("apps.users.urls")),
     path("api/permission-blocks/", include("apps.users.permission_block_urls")),
