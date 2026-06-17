@@ -39,4 +39,5 @@ urlpatterns = [
     path("api/email-templates/", include("apps.notifications.email_template_urls")),
     path("api/sla-policies/", include("apps.tickets.sla_urls")),
     path("api/reports/", include("apps.reports.urls")),
+    path("api/webhooks/", include("apps.webhooks.urls")),
 ]

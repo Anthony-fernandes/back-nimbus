@@ -274,6 +274,15 @@ class TicketViewSet(CompanyScopedModelViewSet):
             metadata={"approval_route": plan["route"], "approval_status": plan["status"]},
         )
 
+        try:
+            from apps.webhooks.services import dispatch_webhook
+            dispatch_webhook(ticket.company, "ticket.created", {
+                "id": str(ticket.id), "code": ticket.code, "title": ticket.title,
+                "status": ticket.status, "priority": ticket.priority,
+            })
+        except Exception:
+            pass
+
         if plan["route"] in ("APPROVER", "SERVICE_DESK"):
             approver = plan["approver"]
             TicketApproval.objects.create(

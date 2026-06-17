@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "apps.communication",
     "apps.search",
     "apps.reports",
+    "apps.webhooks",
 ]
 
 MIDDLEWARE = [
