@@ -55,6 +55,9 @@ class TicketViewSet(CompanyScopedModelViewSet):
         "requester_user",
         "contact_responsible",
         "responsible_technician",
+        "approval_status",
+        "approval_route",
+        "current_approver",
     ]
     search_fields = [
         "code",
@@ -135,24 +138,33 @@ class TicketViewSet(CompanyScopedModelViewSet):
             return
         raise PermissionDenied("Seu perfil nao pode excluir chamados.")
 
+    def _approval_scope(self, user):
+        """Chamados que o usuario pode ver por ser aprovador (vinculado ou Service Desk)."""
+
+        scope = Q(current_approver=user)
+        if getattr(user, "is_service_desk_approver", False):
+            scope |= Q(approval_route="SERVICE_DESK", approval_status="Aguardando Aprovacao")
+        return scope
+
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
         role = normalize_user_role(getattr(user, "role", None))
+        approval_scope = self._approval_scope(user)
 
         if role == "CLIENT":
-            filters = Q()
+            filters = approval_scope
             if user_has_permission(user, "tickets.viewOwn"):
                 filters |= Q(requester_user=user)
             if user_has_permission(user, "tickets.viewOrganization"):
                 filters |= Q(client_id__in=get_user_organization_ids(user))
-            return queryset.filter(filters).distinct() if filters else queryset.none()
+            return queryset.filter(filters).distinct()
 
         if role == "TECHNICIAN":
             if user_has_permission(user, "tickets.viewAll"):
                 return queryset
 
-            filters = Q()
+            filters = approval_scope
             if user_has_permission(user, "tickets.viewAssigned"):
                 filters |= Q(responsible_technician=user) | Q(technicians=user)
             if user_has_permission(user, "tickets.viewTeam") and getattr(user, "technical_group", ""):
@@ -160,12 +172,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
             if user_has_permission(user, "tickets.viewOwn"):
                 filters |= Q(requester_user=user)
 
-            return queryset.filter(filters).distinct() if filters else queryset.none()
+            return queryset.filter(filters).distinct()
 
         if role == "ADMIN":
-            return queryset if user_has_permission(user, "tickets.viewAll") else queryset.none()
+            if user_has_permission(user, "tickets.viewAll"):
+                return queryset
+            return queryset.filter(approval_scope).distinct()
 
-        return queryset.none()
+        return queryset.filter(approval_scope).distinct()
 
     def perform_create(self, serializer):
         self._ensure_can_create()
