@@ -459,6 +459,37 @@ class TicketViewSet(CompanyScopedModelViewSet):
         data = TicketApprovalSerializer(ticket.approvals.all(), many=True).data
         return Response(data)
 
+    @action(detail=True, methods=["post"])
+    def rate(self, request, pk=None):
+        ticket = self.get_object()
+        # Only the requester (client) can rate
+        if str(ticket.requester_id) != str(request.user.id) and str(ticket.client_user_id or "") != str(request.user.id):
+            return Response({"detail": "Apenas o solicitante pode avaliar o chamado."}, status=403)
+        # Only closed/resolved tickets
+        closed_statuses = ["Resolvido", "Encerrado", "Fechado", "Concluido", "Convertido em Atividade de Projeto"]
+        if ticket.status not in closed_statuses:
+            return Response({"detail": "O chamado precisa estar encerrado para ser avaliado."}, status=400)
+        if ticket.rated_at:
+            return Response({"detail": "Este chamado ja foi avaliado."}, status=400)
+
+        rating = request.data.get("rating")
+        comment = request.data.get("comment", "")
+
+        if not rating or not isinstance(rating, int) or rating < 1 or rating > 5:
+            return Response({"detail": "Avaliacao deve ser entre 1 e 5."}, status=400)
+
+        from django.utils import timezone
+        ticket.rating = rating
+        ticket.rating_comment = comment
+        ticket.rated_at = timezone.now()
+        ticket.save(update_fields=["rating", "rating_comment", "rated_at"])
+
+        from common.audit import record_audit
+        record_audit(request, "TICKET_RATED", ticket, label=ticket.title, changes={"rating": rating, "comment": comment})
+
+        from apps.tickets.serializers import TicketSerializer
+        return Response(TicketSerializer(ticket, context={"request": request}).data)
+
     @action(detail=True, methods=["post"], url_path="convert-to-activity")
     def convert_to_activity(self, request, pk=None):
         from apps.activities.models import (

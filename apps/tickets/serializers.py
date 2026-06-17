@@ -114,6 +114,9 @@ class TicketSerializer(serializers.ModelSerializer):
             "converted_activity",
             "converted_at",
             "conversion_reason",
+            "rating",
+            "rating_comment",
+            "rated_at",
             "created_at",
             "updated_at",
         ]
@@ -128,6 +131,9 @@ class TicketSerializer(serializers.ModelSerializer):
             "converted_activity": {"read_only": True},
             "converted_at": {"read_only": True},
             "conversion_reason": {"read_only": True},
+            "rating": {"read_only": True},
+            "rating_comment": {"read_only": True},
+            "rated_at": {"read_only": True},
         }
 
     def get_technician_names(self, obj):

@@ -133,6 +133,11 @@ class Ticket(BaseModel):
     converted_at = models.DateTimeField(null=True, blank=True)
     conversion_reason = models.CharField(max_length=255, blank=True, default="")
 
+    # Avaliacao do chamado pelo solicitante
+    rating = models.IntegerField(null=True, blank=True)  # 1-5
+    rating_comment = models.TextField(blank=True)
+    rated_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
 
