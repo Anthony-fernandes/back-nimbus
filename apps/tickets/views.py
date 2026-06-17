@@ -234,6 +234,14 @@ class TicketViewSet(CompanyScopedModelViewSet):
     # ------------------------------------------------------------------
 
     def _post_create(self, ticket):
+        # Calcula SLA automaticamente
+        try:
+            from .sla import compute_sla_due_at
+            compute_sla_due_at(ticket)
+            ticket.save(update_fields=["sla_due_at", "updated_at"])
+        except Exception:
+            pass
+
         plan = resolve_approval_plan(ticket)
         ticket.approval_route = plan["route"]
         ticket.approval_status = plan["status"]

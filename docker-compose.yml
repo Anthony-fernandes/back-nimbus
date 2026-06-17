@@ -36,3 +36,12 @@ services:
     depends_on:
       - redis
       - postgres
+
+  celery-beat:
+    build: .
+    command: celery -A config beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    env_file:
+      - .env.example
+    depends_on:
+      - redis
+      - postgres
