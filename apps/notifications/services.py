@@ -46,15 +46,25 @@ def _preference(user: Any) -> NotificationPreference | None:
     return pref
 
 
-def _send_email(recipient: Any, title: str, message: str, link: str) -> None:
+def _send_email(recipient: Any, title: str, message: str, link: str, event: str = "", context: dict | None = None) -> None:
+    subject = title
     body = message or title
+
+    if event and context and getattr(recipient, "company", None):
+        from apps.notifications.email_templates import get_email_template, render_template
+        tmpl = get_email_template(recipient.company, event)
+        if tmpl.get("subject"):
+            subject = render_template(tmpl["subject"], context)
+        if tmpl.get("body"):
+            body = render_template(tmpl["body"], context)
+
     web = getattr(settings, "PLATFORM_WEB_URL", "")
-    if link and web:
+    if link and web and "\n" not in body:
         body = f"{body}\n\nAcesse: {web.rstrip('/')}/{link.lstrip('/')}"
 
     try:
         send_mail(
-            subject=f"[Stratos Suite] {title}",
+            subject=f"[Stratos Suite] {subject}",
             message=body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[recipient.email],
@@ -121,7 +131,8 @@ def notify(
         if pref:
             allow_email = pref.email_enabled and event not in (pref.email_disabled_events or [])
         if allow_email:
-            _send_email(recipient, title, message, link)
+            email_context = metadata or {}
+            _send_email(recipient, title, message, link, event=event, context=email_context)
             if notification:
                 notification.email_sent = True
                 notification.save(update_fields=["email_sent", "updated_at"])
