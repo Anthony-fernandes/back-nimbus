@@ -843,3 +843,25 @@ class TicketApprovalViewSet(CompanyScopedModelViewSet):
     filterset_fields = ["ticket", "decision", "route", "approver"]
     search_fields = ["approver_name", "comment"]
     ordering_fields = "__all__"
+
+
+class SLAPolicyViewSet(CompanyScopedModelViewSet):
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["active", "priority", "category"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        from .models import SLAPolicy
+        return SLAPolicy.objects.filter(company=self.request.user.company, deleted_at__isnull=True)
+
+    def get_serializer_class(self):
+        from .serializers import SLAPolicySerializer
+        return SLAPolicySerializer
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=["get"], url_path="alerts")
+    def alerts(self, request):
+        from .sla import check_sla_alerts
+        return Response(check_sla_alerts(request.user.company))

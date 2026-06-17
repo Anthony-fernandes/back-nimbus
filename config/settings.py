@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     "apps.knowledge",
     "apps.communication",
     "apps.search",
+    "apps.reports",
 ]
 
 MIDDLEWARE = [

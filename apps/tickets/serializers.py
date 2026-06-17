@@ -3,6 +3,7 @@ from rest_framework import serializers
 from apps.users.models import UserOrganization
 from common.access import normalize_user_role
 from .models import (
+    SLAPolicy,
     Ticket,
     TicketApproval,
     TicketAttachment,
@@ -350,5 +351,12 @@ class TicketCategorySerializer(serializers.ModelSerializer):
 class TicketWorkflowStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = TicketWorkflowStatus
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class SLAPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SLAPolicy
         fields = "__all__"
         extra_kwargs = {"company": {"required": False, "read_only": True}}

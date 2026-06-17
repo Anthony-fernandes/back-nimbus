@@ -253,6 +253,24 @@ class TicketCategory(BaseModel):
         return self.name
 
 
+class SLAPolicy(BaseModel):
+    """Per-company SLA policy: maps priority+category to a response time."""
+    PRIORITY_CHOICES = [("Critica", "Critica"), ("Alta", "Alta"), ("Media", "Media"), ("Baixa", "Baixa"), ("", "Qualquer")]
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sla_policies")
+    name = models.CharField(max_length=200)
+    priority = models.CharField(max_length=30, choices=PRIORITY_CHOICES, blank=True, default="")
+    category = models.CharField(max_length=80, blank=True, default="")
+    response_time = models.CharField(max_length=20, default="8h", help_text="Ex: 2h, 1d, 30m")
+    priority_weight = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-priority_weight", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.response_time})"
+
+
 class TicketWorkflowStatus(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_workflow_statuses")
     name = models.CharField(max_length=120)
