@@ -1,26 +1,74 @@
 from django.db import models
-from common.models import BaseModel
-from apps.companies.models import Company
+
 from apps.clients.models import Client
+from apps.companies.models import Company
 from apps.projects.models import Project
 from apps.users.models import User
+from common.models import BaseModel
+
 
 class Ticket(BaseModel):
-    PRIORITY = [("Crítica","Crítica"),("Alta","Alta"),("Média","Média"),("Baixa","Baixa")]
-    STATUS = [("Triagem","Triagem"),("Em atendimento","Em atendimento"),("Aguardando cliente","Aguardando cliente"),("Validação","Validação"),("Pausado","Pausado"),("Finalizado","Finalizado")]
+    PRIORITY = [
+        ("Critica", "Critica"),
+        ("Alta", "Alta"),
+        ("Media", "Media"),
+        ("Baixa", "Baixa"),
+    ]
+    STATUS = [
+        ("Aberto", "Aberto"),
+        ("Triagem", "Triagem"),
+        ("Aguardando atendimento", "Aguardando atendimento"),
+        ("Em atendimento", "Em atendimento"),
+        ("Aguardando cliente", "Aguardando cliente"),
+        ("Validacao", "Validacao"),
+        ("Pausado", "Pausado"),
+        ("Cancelado", "Cancelado"),
+        ("Finalizado", "Finalizado"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="tickets")
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="tickets")
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets")
+    sprint = models.ForeignKey(
+        "sprints.Sprint",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
+    )
     code = models.CharField(max_length=30, unique=True, blank=True, default="")
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     requester = models.CharField(max_length=255, blank=True, default="")
+    requester_user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="requested_tickets",
+    )
+    contact_responsible = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contact_tickets",
+    )
+    contact_responsible_name = models.CharField(max_length=255, blank=True, default="")
+    contact_responsible_phone = models.CharField(max_length=40, blank=True, default="")
+    responsible_technician = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_tickets",
+    )
     category = models.CharField(max_length=80, blank=True, default="Atendimento")
     type = models.CharField(max_length=80, blank=True, default="Incidente")
-    priority = models.CharField(max_length=30, choices=PRIORITY, default="Média")
-    impact = models.CharField(max_length=30, default="Médio")
-    urgency = models.CharField(max_length=30, default="Média")
-    status = models.CharField(max_length=40, choices=STATUS, default="Triagem")
+    priority = models.CharField(max_length=30, choices=PRIORITY, default="Media")
+    impact = models.CharField(max_length=30, default="Medio")
+    urgency = models.CharField(max_length=30, default="Media")
+    status = models.CharField(max_length=40, choices=STATUS, default="Aberto")
     technicians = models.ManyToManyField(User, blank=True, related_name="tickets")
     team = models.CharField(max_length=120, blank=True, default="")
     sla = models.CharField(max_length=30, blank=True, default="8h")
@@ -36,11 +84,11 @@ class Ticket(BaseModel):
     class Meta:
         ordering = ["-created_at"]
 
-    def save(self,*args,**kwargs):
+    def save(self, *args, **kwargs):
         if not self.code:
             last = Ticket.objects.count() + 1
-            self.code = f"NIM-{2000+last}"
-        super().save(*args,**kwargs)
+            self.code = f"NIM-{2000 + last}"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.code or self.title

@@ -1,7 +1,15 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as DjangoUserAdmin
 
-from .models import User
+from .models import PermissionBlock, User
+
+
+@admin.register(PermissionBlock)
+class PermissionBlockAdmin(admin.ModelAdmin):
+    list_display = ("name", "company", "active", "created_at")
+    list_filter = ("company", "active")
+    search_fields = ("name", "description", "company__name")
+    ordering = ("name",)
 
 
 @admin.register(User)
@@ -12,6 +20,7 @@ class UserAdmin(DjangoUserAdmin):
         "first_name",
         "last_name",
         "company",
+        "client",
         "role",
         "is_staff",
         "is_active",
@@ -22,19 +31,21 @@ class UserAdmin(DjangoUserAdmin):
         "last_name",
         "email",
         "company__name",
+        "client__name",
         "job_title",
         "specialty",
         "technical_group",
     )
-    list_filter = ("role", "is_staff", "is_superuser", "is_active", "company")
+    list_filter = ("role", "is_staff", "is_superuser", "is_active", "company", "client")
     ordering = ("username",)
-    autocomplete_fields = ("company",)
+    autocomplete_fields = ("company", "client")
     fieldsets = DjangoUserAdmin.fieldsets + (
         (
             "Informacoes adicionais",
             {
                 "fields": (
                     "company",
+                    "client",
                     "role",
                     "job_title",
                     "specialty",
@@ -43,6 +54,9 @@ class UserAdmin(DjangoUserAdmin):
                     "used_hours",
                     "technical_group",
                     "permissions_json",
+                    "granted_permissions",
+                    "denied_permissions",
+                    "permission_blocks",
                 )
             },
         ),
@@ -54,6 +68,7 @@ class UserAdmin(DjangoUserAdmin):
                 "classes": ("wide",),
                 "fields": (
                     "company",
+                    "client",
                     "role",
                     "job_title",
                     "specialty",
@@ -62,6 +77,9 @@ class UserAdmin(DjangoUserAdmin):
                     "used_hours",
                     "technical_group",
                     "permissions_json",
+                    "granted_permissions",
+                    "denied_permissions",
+                    "permission_blocks",
                 ),
             },
         ),
