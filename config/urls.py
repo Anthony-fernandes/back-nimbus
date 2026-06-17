@@ -33,4 +33,6 @@ urlpatterns = [
     path("api/notifications/", include("apps.notifications.urls")),
     path("api/notification-preferences/", include("apps.notifications.preference_urls")),
     path("api/audit-logs/", include("apps.audit.urls")),
+    path("api/knowledge/", include("apps.knowledge.urls")),
+    path("api/communication/", include("apps.communication.urls")),
 ]

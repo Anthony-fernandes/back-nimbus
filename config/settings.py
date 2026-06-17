@@ -91,6 +91,8 @@ INSTALLED_APPS = [
     "apps.dashboard",
     "apps.notifications",
     "apps.audit",
+    "apps.knowledge",
+    "apps.communication",
 ]
 
 MIDDLEWARE = [
