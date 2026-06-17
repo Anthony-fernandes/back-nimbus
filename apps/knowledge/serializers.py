@@ -30,6 +30,9 @@ class KnowledgeArticleSerializer(serializers.ModelSerializer):
             "not_helpful_count": {"read_only": True},
             "published_at": {"read_only": True},
             "version": {"read_only": True},
+            "source_ticket": {"read_only": True},
+            "source_forum_topic": {"read_only": True},
+            "source_doubts_question": {"read_only": True},
         }
 
 

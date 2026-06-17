@@ -619,6 +619,41 @@ class TicketViewSet(CompanyScopedModelViewSet):
             }
         )
 
+    @action(detail=True, methods=["post"], url_path="convert-to-kb")
+    def convert_to_kb(self, request, pk=None):
+        ticket = self.get_object()
+        from apps.knowledge.models import KnowledgeArticle
+        category_id = request.data.get("category")
+        category = None
+        if category_id:
+            from apps.knowledge.models import KnowledgeCategory
+            try:
+                category = KnowledgeCategory.objects.get(id=category_id, company=request.user.company)
+            except KnowledgeCategory.DoesNotExist:
+                pass
+        content = ticket.description or ticket.title
+        article = KnowledgeArticle.objects.create(
+            company=request.user.company,
+            title=ticket.title,
+            slug=f"ticket-{str(ticket.id)[:8]}",
+            content=content,
+            summary=content[:300],
+            category=category,
+            status="DRAFT",
+            visibility="INTERNAL",
+            author=request.user,
+            source_ticket=ticket,
+        )
+        from common.audit import record_audit
+        record_audit(
+            request=request,
+            action="CONVERT_TICKET_TO_KB",
+            instance=article,
+            entity_label=article.title,
+        )
+        from apps.knowledge.serializers import KnowledgeArticleSerializer
+        return Response(KnowledgeArticleSerializer(article).data, status=201)
+
 
 class TicketCategoryViewSet(CompanyScopedModelViewSet):
     queryset = TicketCategory.objects.all()

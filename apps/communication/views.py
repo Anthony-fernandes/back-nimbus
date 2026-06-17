@@ -67,6 +67,39 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
         topic.save(update_fields=["best_answer", "updated_at"])
         return Response(self.get_serializer(topic).data)
 
+    @action(detail=True, methods=["post"], url_path="convert-to-kb")
+    def convert_to_kb(self, request, pk=None):
+        topic = self.get_object()
+        from apps.knowledge.models import KnowledgeArticle, KnowledgeCategory
+        category_id = request.data.get("category")
+        category = None
+        if category_id:
+            try:
+                category = KnowledgeCategory.objects.get(id=category_id, company=request.user.company)
+            except KnowledgeCategory.DoesNotExist:
+                pass
+        article = KnowledgeArticle.objects.create(
+            company=request.user.company,
+            title=topic.title,
+            slug=f"forum-{str(topic.id)[:8]}",
+            content=topic.content,
+            summary=topic.content[:300],
+            category=category,
+            status="DRAFT",
+            visibility="INTERNAL",
+            author=request.user,
+            source_forum_topic=topic,
+        )
+        from common.audit import record_audit
+        record_audit(
+            request=request,
+            action="CONVERT_FORUM_TO_KB",
+            instance=article,
+            entity_label=article.title,
+        )
+        from apps.knowledge.serializers import KnowledgeArticleSerializer
+        return Response(KnowledgeArticleSerializer(article).data, status=201)
+
 
 class ForumReplyViewSet(CompanyScopedModelViewSet):
     queryset = ForumReply.objects.all()
@@ -206,6 +239,43 @@ class DoubtsQuestionViewSet(CompanyScopedModelViewSet):
         question.status = "ANSWERED"
         question.save(update_fields=["status", "updated_at"])
         return Response(self.get_serializer(question).data)
+
+    @action(detail=True, methods=["post"], url_path="convert-to-kb")
+    def convert_to_kb(self, request, pk=None):
+        question = self.get_object()
+        from apps.knowledge.models import KnowledgeArticle, KnowledgeCategory
+        category_id = request.data.get("category")
+        category = None
+        if category_id:
+            try:
+                category = KnowledgeCategory.objects.get(id=category_id, company=request.user.company)
+            except KnowledgeCategory.DoesNotExist:
+                pass
+        accepted = DoubtsAnswer.objects.filter(question=question, is_accepted=True).first()
+        content = question.content
+        if accepted:
+            content += f"\n\n---\n\n**Resposta aceita:**\n\n{accepted.content}"
+        article = KnowledgeArticle.objects.create(
+            company=request.user.company,
+            title=question.title,
+            slug=f"doubts-{str(question.id)[:8]}",
+            content=content,
+            summary=question.content[:300],
+            category=category,
+            status="DRAFT",
+            visibility="INTERNAL",
+            author=request.user,
+            source_doubts_question=question,
+        )
+        from common.audit import record_audit
+        record_audit(
+            request=request,
+            action="CONVERT_DOUBTS_TO_KB",
+            instance=article,
+            entity_label=article.title,
+        )
+        from apps.knowledge.serializers import KnowledgeArticleSerializer
+        return Response(KnowledgeArticleSerializer(article).data, status=201)
 
 
 class DoubtsAnswerViewSet(CompanyScopedModelViewSet):

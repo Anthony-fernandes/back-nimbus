@@ -66,6 +66,20 @@ class KnowledgeArticle(BaseModel):
         blank=True,
         related_name="knowledge_articles",
     )
+    source_forum_topic = models.ForeignKey(
+        "communication.ForumTopic",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="knowledge_articles",
+    )
+    source_doubts_question = models.ForeignKey(
+        "communication.DoubtsQuestion",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="knowledge_articles",
+    )
 
     class Meta:
         ordering = ["-created_at"]
