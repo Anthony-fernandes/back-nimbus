@@ -36,4 +36,5 @@ urlpatterns = [
     path("api/knowledge/", include("apps.knowledge.urls")),
     path("api/communication/", include("apps.communication.urls")),
     path("api/search/", include("apps.search.urls")),
+    path("api/email-templates/", include("apps.notifications.email_template_urls")),
 ]

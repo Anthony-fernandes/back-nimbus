@@ -81,3 +81,17 @@ class NotificationPreference(BaseModel):
 
     def __str__(self):
         return f"Preferencias de {self.user_id}"
+
+
+class EmailTemplate(BaseModel):
+    company = models.ForeignKey("companies.Company", on_delete=models.CASCADE, related_name="email_templates")
+    event = models.CharField(max_length=100)
+    subject = models.CharField(max_length=300)
+    body = models.TextField()
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        unique_together = [["company", "event"]]
+
+    def __str__(self):
+        return f"{self.company_id} - {self.event}"

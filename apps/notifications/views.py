@@ -6,8 +6,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
 
-from .models import Notification, NotificationPreference
-from .serializers import NotificationPreferenceSerializer, NotificationSerializer
+from common.viewsets import CompanyScopedModelViewSet
+
+from .models import EmailTemplate, Notification, NotificationPreference
+from .serializers import EmailTemplateSerializer, NotificationPreferenceSerializer, NotificationSerializer
 
 
 class NotificationViewSet(
@@ -96,3 +98,18 @@ class NotificationPreferenceView(APIView):
 
     def put(self, request):
         return self.patch(request)
+
+
+class EmailTemplateViewSet(CompanyScopedModelViewSet):
+    serializer_class = EmailTemplateSerializer
+
+    def get_queryset(self):
+        return EmailTemplate.objects.filter(company=self.request.user.company, deleted_at__isnull=True)
+
+    @action(detail=False, methods=["get"], url_path="available-events")
+    def available_events(self, request):
+        from apps.notifications.email_templates import DEFAULT_EMAIL_TEMPLATES, EVENT_LABEL
+        return Response([
+            {"event": k, "label": EVENT_LABEL.get(k, k), "default_subject": v["subject"], "default_body": v["body"]}
+            for k, v in DEFAULT_EMAIL_TEMPLATES.items()
+        ])
