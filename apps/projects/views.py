@@ -14,7 +14,10 @@ from .serializers import ProjectSerializer
 
 
 class ProjectViewSet(CompanyScopedModelViewSet):
-    queryset = Project.objects.all()
+    queryset = (
+        Project.objects.all()
+        .select_related('owner', 'client', 'contact_principal')
+    )
     serializer_class = ProjectSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["company", "client", "status", "owner", "contact_principal"]

@@ -12,19 +12,17 @@ logger = logging.getLogger(__name__)
 
 
 def dispatch_webhook(company, event: str, payload: dict) -> None:
-    """Fire all active webhooks for this company+event in a background thread."""
+    """Fire all active webhooks for this company+event via Celery tasks."""
     from .models import Webhook
+    from .tasks import deliver_webhook
     webhooks = Webhook.objects.filter(
         company=company,
         active=True,
         deleted_at__isnull=True,
     )
     webhooks = [w for w in webhooks if event in (w.events or [])]
-    if not webhooks:
-        return
     for webhook in webhooks:
-        t = threading.Thread(target=_deliver, args=(webhook, event, payload), daemon=True)
-        t.start()
+        deliver_webhook.delay(str(webhook.id), event, payload)
 
 
 def _deliver(webhook, event: str, payload: dict) -> None:

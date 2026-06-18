@@ -44,6 +44,36 @@ def check_sla_task():
                 except User.DoesNotExist:
                     pass
 
+                # SLA Escalation: escalate priority to Critica if not already
+                ticket_id = ticket_data.get("id")
+                if ticket_id:
+                    try:
+                        from .models import Ticket
+                        from common.audit import record_audit
+                        ticket = Ticket.objects.select_related('responsible_technician').get(id=ticket_id)
+                        if ticket.priority != "Critica":
+                            ticket.priority = "Critica"
+                            ticket.save(update_fields=["priority", "updated_at"])
+                            record_audit(
+                                action="ticket.sla_escalated",
+                                instance=ticket,
+                                description=f"Chamado {ticket.code} escalado para prioridade Critica por violacao de SLA.",
+                                origin="tickets",
+                            )
+                            if ticket.responsible_technician:
+                                notify(
+                                    ticket.responsible_technician,
+                                    title=f"Chamado escalado: {ticket.code}",
+                                    event="ticket.sla_escalated",
+                                    category="SLA",
+                                    message=f"O chamado {ticket.code} foi escalado para prioridade CRITICA por violacao de SLA.",
+                                    link=f"tickets/{ticket_id}",
+                                    company=company,
+                                    send_email=True,
+                                )
+                    except Exception as exc:
+                        logger.warning("SLA escalation failed for ticket %s: %s", ticket_id, exc)
+
             for ticket_data in warning:
                 tech_id = ticket_data.get("responsible_technician_id")
                 if not tech_id:

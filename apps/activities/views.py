@@ -21,7 +21,10 @@ from .serializers import (
 
 
 class ActivityViewSet(CompanyScopedModelViewSet):
-    queryset = Activity.objects.all()
+    queryset = (
+        Activity.objects.all()
+        .select_related('assignee', 'project', 'sprint', 'ticket')
+    )
     serializer_class = ActivitySerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["company", "type", "status", "priority", "assignee", "project", "sprint", "ticket"]

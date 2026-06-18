@@ -42,7 +42,11 @@ def _ticket_link(ticket):
 
 
 class TicketViewSet(CompanyScopedModelViewSet):
-    queryset = Ticket.objects.all()
+    queryset = (
+        Ticket.objects.all()
+        .select_related('requester_user', 'responsible_technician', 'current_approver', 'client', 'project')
+        .prefetch_related('approvals')
+    )
     serializer_class = TicketSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = [
