@@ -1,3 +1,4 @@
+import secrets
 import threading
 
 from rest_framework.decorators import action
@@ -17,7 +18,10 @@ class WebhookViewSet(CompanyScopedModelViewSet):
         return Webhook.objects.filter(company=self.request.user.company, deleted_at__isnull=True)
 
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
+        if not serializer.validated_data.get('secret'):
+            serializer.save(company=self.request.user.company, secret=secrets.token_hex(32))
+        else:
+            serializer.save(company=self.request.user.company)
 
     @action(detail=False, methods=["get"], url_path="available-events")
     def available_events(self, request):

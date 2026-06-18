@@ -81,9 +81,11 @@ class ReportsView(APIView):
             "by_technician": by_technician,
         }
 
+        rows = list(qs.values("code", "title", "status", "priority", "category", "created_at", "finished_at", "sla_due_at", "rating"))
         if export == "csv":
-            rows = list(qs.values("code", "title", "status", "priority", "category", "created_at", "finished_at", "sla_due_at", "rating"))
             return self._csv_response(rows, "relatorio_chamados.csv")
+        if export == "excel":
+            return self._excel_response(rows, "relatorio_chamados.xlsx")
 
         return Response(data)
 
@@ -124,6 +126,8 @@ class ReportsView(APIView):
 
         if export == "csv":
             return self._csv_response(tickets, "relatorio_sla.csv")
+        if export == "excel":
+            return self._excel_response(tickets, "relatorio_sla.xlsx")
 
         return Response(data)
 
@@ -140,6 +144,8 @@ class ReportsView(APIView):
 
         if export == "csv":
             return self._csv_response(tickets, "relatorio_avaliacoes.csv")
+        if export == "excel":
+            return self._excel_response(tickets, "relatorio_avaliacoes.xlsx")
 
         return Response(data)
 
@@ -151,9 +157,11 @@ class ReportsView(APIView):
         total_hours = qs.aggregate(h=Count("id"))["h"]
         data = {"total": qs.count(), "by_status": by_status, "by_project": by_project}
 
+        rows = list(qs.values("title", "status", "project__name", "assignee__name", "created_at", "due_date")[:500])
         if export == "csv":
-            rows = list(qs.values("title", "status", "project__name", "assignee__name", "created_at", "due_date")[:500])
             return self._csv_response(rows, "relatorio_atividades.csv")
+        if export == "excel":
+            return self._excel_response(rows, "relatorio_atividades.xlsx")
 
         return Response(data)
 
@@ -171,4 +179,40 @@ class ReportsView(APIView):
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
+    def _excel_response(self, rows: list[dict], filename: str) -> HttpResponse:
+        try:
+            import openpyxl
+            from openpyxl.styles import Font, PatternFill, Alignment
+        except ImportError:
+            return HttpResponse("openpyxl não instalado.", status=500)
 
+        if not rows:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["Sem dados"])
+        else:
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            headers = list(rows[0].keys())
+            ws.append(headers)
+            # Style header row
+            for cell in ws[1]:
+                cell.font = Font(bold=True, color="FFFFFF")
+                cell.fill = PatternFill("solid", fgColor="1E293B")
+                cell.alignment = Alignment(horizontal="center")
+            for row in rows:
+                ws.append([str(v) if v is not None else "" for v in row.values()])
+            # Auto-fit columns
+            for col in ws.columns:
+                max_len = max(len(str(cell.value or "")) for cell in col)
+                ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 40)
+
+        output = io.BytesIO()
+        wb.save(output)
+        output.seek(0)
+        response = HttpResponse(
+            output.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response

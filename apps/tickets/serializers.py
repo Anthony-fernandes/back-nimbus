@@ -9,6 +9,7 @@ from .models import (
     TicketAttachment,
     TicketCategory,
     TicketComment,
+    TicketTemplate,
     TicketWorkflowStatus,
 )
 
@@ -360,3 +361,10 @@ class SLAPolicySerializer(serializers.ModelSerializer):
         model = SLAPolicy
         fields = "__all__"
         extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class TicketTemplateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketTemplate
+        fields = '__all__'
+        read_only_fields = ['id', 'company', 'created_at', 'updated_at', 'deleted_at']

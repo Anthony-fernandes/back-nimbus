@@ -890,3 +890,20 @@ class SLAPolicyViewSet(CompanyScopedModelViewSet):
     def alerts(self, request):
         from .sla import check_sla_alerts
         return Response(check_sla_alerts(request.user.company))
+
+
+class TicketTemplateViewSet(CompanyScopedModelViewSet):
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ['active', 'type', 'priority']
+    ordering_fields = '__all__'
+
+    def get_queryset(self):
+        from .models import TicketTemplate
+        return TicketTemplate.objects.filter(company=self.request.user.company, deleted_at__isnull=True)
+
+    def get_serializer_class(self):
+        from .serializers import TicketTemplateSerializer
+        return TicketTemplateSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)

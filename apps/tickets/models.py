@@ -253,6 +253,27 @@ class TicketCategory(BaseModel):
         return self.name
 
 
+class TicketTemplate(BaseModel):
+    """Pre-filled ticket template for common request types."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_templates")
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    # Pre-filled fields
+    title = models.CharField(max_length=300, blank=True, default="")
+    type = models.CharField(max_length=80, blank=True, default="")
+    priority = models.CharField(max_length=30, blank=True, default="")
+    category = models.ForeignKey("TicketCategory", on_delete=models.SET_NULL, null=True, blank=True, related_name="templates")
+    description_template = models.TextField(blank=True, default="", help_text="Template de descricao do chamado")
+    tags = models.JSONField(default=list, blank=True)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class SLAPolicy(BaseModel):
     """Per-company SLA policy: maps priority+category to a response time."""
     PRIORITY_CHOICES = [("Critica", "Critica"), ("Alta", "Alta"), ("Media", "Media"), ("Baixa", "Baixa"), ("", "Qualquer")]

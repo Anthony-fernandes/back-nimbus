@@ -18,4 +18,8 @@ app.conf.beat_schedule = {
         "task": "apps.notifications.tasks.send_daily_digest",
         "schedule": crontab(hour=8, minute=0),  # 8am daily
     },
+    "send-weekly-ticket-report": {
+        "task": "apps.reports.tasks.send_weekly_ticket_report",
+        "schedule": crontab(hour=8, minute=0, day_of_week=1),  # Monday 8am
+    },
 }

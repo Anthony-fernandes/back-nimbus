@@ -9,6 +9,13 @@ class WebhookSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "last_triggered_at", "last_status_code", "created_at"]
         extra_kwargs = {"secret": {"write_only": True}}
 
+    def validate_secret(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("O secret do webhook é obrigatório para garantir segurança.")
+        if len(value) < 16:
+            raise serializers.ValidationError("O secret deve ter pelo menos 16 caracteres.")
+        return value
+
 
 class WebhookDeliverySerializer(serializers.ModelSerializer):
     class Meta:
