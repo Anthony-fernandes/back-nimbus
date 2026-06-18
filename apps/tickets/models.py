@@ -274,6 +274,38 @@ class TicketTemplate(BaseModel):
         return self.name
 
 
+class TicketCustomField(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="custom_fields")
+    name = models.CharField(max_length=100)
+    label = models.CharField(max_length=150)
+    field_type = models.CharField(max_length=30, choices=[
+        ("text", "Texto"), ("number", "Número"), ("date", "Data"),
+        ("select", "Seleção"), ("boolean", "Sim/Não"),
+    ])
+    options = models.JSONField(default=list, blank=True)  # for select type
+    required = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.label
+
+
+class TicketCustomValue(BaseModel):
+    ticket = models.ForeignKey("Ticket", on_delete=models.CASCADE, related_name="custom_values")
+    field = models.ForeignKey(TicketCustomField, on_delete=models.CASCADE)
+    value = models.TextField(blank=True, default="")
+
+    class Meta:
+        unique_together = [("ticket", "field")]
+
+    def __str__(self):
+        return f"{self.ticket_id} - {self.field.name}"
+
+
 class SLAPolicy(BaseModel):
     """Per-company SLA policy: maps priority+category to a response time."""
     PRIORITY_CHOICES = [("Critica", "Critica"), ("Alta", "Alta"), ("Media", "Media"), ("Baixa", "Baixa"), ("", "Qualquer")]

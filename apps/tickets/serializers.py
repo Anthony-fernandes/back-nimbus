@@ -9,6 +9,8 @@ from .models import (
     TicketAttachment,
     TicketCategory,
     TicketComment,
+    TicketCustomField,
+    TicketCustomValue,
     TicketTemplate,
     TicketWorkflowStatus,
 )
@@ -34,6 +36,22 @@ def user_has_organization_link(user, organization):
     ).exists()
 
 
+class TicketCustomFieldSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketCustomField
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class TicketCustomValueSerializer(serializers.ModelSerializer):
+    field_label = serializers.CharField(source="field.label", read_only=True)
+
+    class Meta:
+        model = TicketCustomValue
+        fields = ["id", "field", "field_id", "field_label", "value"]
+        extra_kwargs = {"field": {"write_only": True}}
+
+
 class TicketSerializer(serializers.ModelSerializer):
     client_name = serializers.CharField(source="client.name", read_only=True)
     organization_id = serializers.CharField(source="client_id", read_only=True)
@@ -53,6 +71,7 @@ class TicketSerializer(serializers.ModelSerializer):
         read_only=True,
     )
     technician_names = serializers.SerializerMethodField()
+    custom_values = TicketCustomValueSerializer(many=True, read_only=True)
     current_approver_name = serializers.CharField(
         source="current_approver.full_name_or_username",
         read_only=True,
@@ -119,6 +138,7 @@ class TicketSerializer(serializers.ModelSerializer):
             "rating",
             "rating_comment",
             "rated_at",
+            "custom_values",
             "created_at",
             "updated_at",
         ]
@@ -258,16 +278,32 @@ class TicketSerializer(serializers.ModelSerializer):
         if ticket.responsible_technician_id:
             ticket.technicians.add(ticket.responsible_technician)
 
+    def _save_custom_values(self, ticket, custom_values_data):
+        if custom_values_data is None:
+            return
+        for entry in custom_values_data:
+            field_id = entry.get("field_id") or (entry.get("field").id if entry.get("field") else None)
+            value = entry.get("value", "")
+            if field_id:
+                TicketCustomValue.objects.update_or_create(
+                    ticket=ticket,
+                    field_id=field_id,
+                    defaults={"value": value},
+                )
+
     def create(self, validated_data):
         technicians = validated_data.pop("technicians", [])
+        custom_values_data = self.initial_data.get("custom_values") if hasattr(self, "initial_data") else None
         ticket = Ticket.objects.create(**validated_data)
         if technicians:
             ticket.technicians.set(technicians)
+        self._save_custom_values(ticket, custom_values_data)
         self._sync_ticket_relations(ticket)
         return ticket
 
     def update(self, instance, validated_data):
         technicians = validated_data.pop("technicians", None)
+        custom_values_data = self.initial_data.get("custom_values") if hasattr(self, "initial_data") else None
 
         for key, value in validated_data.items():
             setattr(instance, key, value)
@@ -276,6 +312,7 @@ class TicketSerializer(serializers.ModelSerializer):
         if technicians is not None:
             instance.technicians.set(technicians)
 
+        self._save_custom_values(instance, custom_values_data)
         self._sync_ticket_relations(instance)
         return instance
 

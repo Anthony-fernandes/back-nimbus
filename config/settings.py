@@ -3,6 +3,18 @@ from datetime import timedelta
 from pathlib import Path
 from django.core.exceptions import ImproperlyConfigured
 
+import sentry_sdk
+
+SENTRY_DSN = os.environ.get("SENTRY_DSN", "")
+if SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=SENTRY_DSN,
+        integrations=[sentry_sdk.integrations.django.DjangoIntegration()],
+        traces_sample_rate=float(os.environ.get("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        send_default_pii=False,
+        environment=os.environ.get("DJANGO_ENV", "production"),
+    )
+
 try:
     import dj_database_url
 except ModuleNotFoundError:
@@ -99,6 +111,7 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.reports",
     "apps.webhooks",
+    "django_celery_beat",
 ]
 
 MIDDLEWARE = [
@@ -135,6 +148,7 @@ CELERY_RESULT_BACKEND = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_TIMEZONE = "America/Sao_Paulo"
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 
 CHANNEL_LAYERS = {
     "default": {

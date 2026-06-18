@@ -25,6 +25,7 @@ from .models import (
     TicketAttachment,
     TicketCategory,
     TicketComment,
+    TicketCustomField,
     TicketWorkflowStatus,
 )
 from .serializers import (
@@ -32,6 +33,7 @@ from .serializers import (
     TicketAttachmentSerializer,
     TicketCategorySerializer,
     TicketCommentSerializer,
+    TicketCustomFieldSerializer,
     TicketSerializer,
     TicketWorkflowStatusSerializer,
 )
@@ -210,10 +212,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 or getattr(self.request.user, "phone", ""),
             )
             self._post_create(serializer.instance)
+            if serializer.instance.company.auto_assign:
+                from .services import auto_assign_ticket
+                auto_assign_ticket(serializer.instance)
             return
 
         super().perform_create(serializer)
         self._post_create(serializer.instance)
+        if serializer.instance.company.auto_assign:
+            from .services import auto_assign_ticket
+            auto_assign_ticket(serializer.instance)
 
     def perform_update(self, serializer):
         ticket = self.get_object()
@@ -904,6 +912,24 @@ class TicketTemplateViewSet(CompanyScopedModelViewSet):
     def get_serializer_class(self):
         from .serializers import TicketTemplateSerializer
         return TicketTemplateSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class TicketCustomFieldViewSet(CompanyScopedModelViewSet):
+    queryset = TicketCustomField.objects.all()
+    serializer_class = TicketCustomFieldSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["active", "field_type", "required"]
+    search_fields = ["name", "label"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        return TicketCustomField.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        )
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)

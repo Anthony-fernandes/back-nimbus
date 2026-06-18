@@ -8,7 +8,9 @@ app = Celery("nimbus")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
-# Periodic tasks
+# Periodic tasks (fallback hardcoded schedule).
+# If django_celery_beat is installed, tasks can be managed via Django admin
+# at /admin/django_celery_beat/ instead of editing this dict.
 app.conf.beat_schedule = {
     "check-sla-every-30-minutes": {
         "task": "apps.tickets.tasks.check_sla_task",
