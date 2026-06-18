@@ -22,4 +22,12 @@ app.conf.beat_schedule = {
         "task": "apps.reports.tasks.send_weekly_ticket_report",
         "schedule": crontab(hour=8, minute=0, day_of_week=1),  # Monday 8am
     },
+    "auto-close-stale-tickets": {
+        "task": "apps.tickets.tasks.auto_close_stale_tickets",
+        "schedule": crontab(hour=2, minute=0),  # 2am daily
+    },
+    "escalate-ticket-priorities": {
+        "task": "apps.tickets.tasks.escalate_ticket_priorities",
+        "schedule": crontab(hour="*/4", minute=0),  # every 4 hours
+    },
 }

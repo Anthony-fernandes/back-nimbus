@@ -1,8 +1,13 @@
+from django.db import models
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 from common.viewsets import CompanyScopedModelViewSet
 from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeTag
@@ -40,6 +45,32 @@ class KnowledgeArticleViewSet(CompanyScopedModelViewSet):
     filterset_fields = ["status", "visibility", "category", "author"]
     search_fields = ["title", "summary", "content", "slug"]
     ordering_fields = "__all__"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        q = self.request.query_params.get('q', '').strip()
+        if q:
+            try:
+                from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
+                search_query = SearchQuery(q, config='portuguese')
+                search_vector = (
+                    SearchVector('title', weight='A', config='portuguese') +
+                    SearchVector('content', weight='B', config='portuguese') +
+                    SearchVector('summary', weight='C', config='portuguese')
+                )
+                qs = (
+                    qs.annotate(rank=SearchRank(search_vector, search_query))
+                    .filter(rank__gt=0.01)
+                    .order_by('-rank')
+                )
+            except Exception as exc:
+                logger.warning("FTS search failed, falling back to icontains: %s", exc)
+                qs = qs.filter(
+                    models.Q(title__icontains=q) |
+                    models.Q(content__icontains=q) |
+                    models.Q(summary__icontains=q)
+                )
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company, author=self.request.user)
