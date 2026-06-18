@@ -64,6 +64,9 @@ class User(AbstractUser):
     approval_mode = models.CharField(max_length=20, choices=APPROVAL_MODE_CHOICES, default="INHERITED")
     is_service_desk_approver = models.BooleanField(default=False)
 
+    mfa_enabled = models.BooleanField(default=False)
+    mfa_secret = models.CharField(max_length=64, blank=True, default="")
+
     permissions_json = models.JSONField(default=list, blank=True)
     granted_permissions = models.JSONField(default=dict, blank=True)
     denied_permissions = models.JSONField(default=dict, blank=True)

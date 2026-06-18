@@ -286,3 +286,5 @@ LOGGING = {
         'common': {'handlers': ['console'], 'level': 'INFO', 'propagate': False},
     },
 }
+
+MFA_APP_NAME = os.environ.get('MFA_APP_NAME', 'Stratos Suite')
