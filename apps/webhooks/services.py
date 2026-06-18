@@ -3,6 +3,7 @@ import hmac
 import json
 import logging
 import threading
+import time
 
 import requests
 from django.utils import timezone
@@ -40,14 +41,20 @@ def _deliver(webhook, event: str, payload: dict) -> None:
     success = False
     error = ""
 
-    try:
-        resp = requests.post(webhook.url, data=body, headers=headers, timeout=10)
-        status_code = resp.status_code
-        response_body = resp.text[:2000]
-        success = 200 <= resp.status_code < 300
-    except Exception as exc:
-        error = str(exc)
-        logger.warning("Webhook delivery failed for %s: %s", webhook.url, exc)
+    for attempt in range(3):
+        try:
+            resp = requests.post(webhook.url, data=body, headers=headers, timeout=10)
+            status_code = resp.status_code
+            response_body = resp.text[:2000]
+            success = 200 <= resp.status_code < 300
+            if success:
+                break
+            error = f"HTTP {status_code}"
+        except Exception as exc:
+            error = str(exc)
+            logger.warning("Webhook delivery attempt %d failed for %s: %s", attempt + 1, webhook.url, exc)
+        if not success and attempt < 2:
+            time.sleep(2 ** attempt)
 
     WebhookDelivery.objects.create(
         webhook=webhook,

@@ -7,7 +7,10 @@ entrada interna e, conforme suas preferencias, por e-mail.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Iterable
+
+logger = logging.getLogger(__name__)
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -68,12 +71,10 @@ def _send_email(recipient: Any, title: str, message: str, link: str, event: str 
             message=body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[recipient.email],
-            fail_silently=True,
+            fail_silently=False,
         )
-    except Exception:
-        # Notificacao por e-mail nunca pode quebrar o fluxo principal.
-        pass
-
+    except Exception as exc:
+        logger.warning("Email send failed to %s: %s", getattr(recipient, "email", "?"), exc)
 
 def notify(
     recipient: Any,

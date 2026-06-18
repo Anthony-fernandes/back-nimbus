@@ -1,4 +1,8 @@
+import logging
+
 from django.db.models import Q
+
+logger = logging.getLogger(__name__)
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -239,8 +243,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
             from .sla import compute_sla_due_at
             compute_sla_due_at(ticket)
             ticket.save(update_fields=["sla_due_at", "updated_at"])
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.exception("Failed to compute SLA for ticket %s: %s", getattr(ticket, "id", "?"), exc)
 
         plan = resolve_approval_plan(ticket)
         ticket.approval_route = plan["route"]
@@ -280,8 +284,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 "id": str(ticket.id), "code": ticket.code, "title": ticket.title,
                 "status": ticket.status, "priority": ticket.priority,
             })
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("Webhook dispatch failed for ticket %s: %s", getattr(ticket, "id", "?"), exc)
 
         if plan["route"] in ("APPROVER", "SERVICE_DESK"):
             approver = plan["approver"]

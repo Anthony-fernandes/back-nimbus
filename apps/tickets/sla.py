@@ -1,6 +1,9 @@
 """SLA calculation utilities."""
+import logging
 from datetime import timedelta
 from django.utils import timezone
+
+logger = logging.getLogger(__name__)
 
 
 SLA_DEFAULTS = {
@@ -24,7 +27,7 @@ def parse_sla_duration(sla_str: str) -> timedelta | None:
         if sla_str.endswith("m"):
             return timedelta(minutes=int(sla_str[:-1]))
     except ValueError:
-        pass
+        logger.warning("Could not parse SLA duration string: %r", sla_str)
     return None
 
 
@@ -43,8 +46,8 @@ def compute_sla_due_at(ticket) -> None:
             duration = parse_sla_duration(policy.response_time) or timedelta(hours=8)
             ticket.sla_due_at = timezone.now() + duration
             return
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.exception("Error computing SLA from policy for ticket %s: %s", getattr(ticket, "id", "?"), exc)
 
     # Fall back to ticket.sla field
     duration = parse_sla_duration(ticket.sla)

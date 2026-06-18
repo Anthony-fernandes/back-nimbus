@@ -1,8 +1,11 @@
 import csv
 import io
+import logging
 from datetime import timedelta
 
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, F, Q
+
+logger = logging.getLogger(__name__)
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework.permissions import IsAuthenticated
@@ -30,16 +33,16 @@ class ReportsView(APIView):
                 d = parse_date(date_from_str)
                 if d:
                     date_from = timezone.make_aware(timezone.datetime.combine(d, timezone.datetime.min.time()))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Invalid date_from param %r: %s", date_from_str, exc)
         if date_to_str:
             try:
                 from django.utils.dateparse import parse_date
                 d = parse_date(date_to_str)
                 if d:
                     date_to = timezone.make_aware(timezone.datetime.combine(d, timezone.datetime.max.time()))
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Invalid date_to param %r: %s", date_to_str, exc)
 
         if report_type == "tickets":
             return self._tickets_report(request, company, date_from, date_to, export)
@@ -92,7 +95,7 @@ class ReportsView(APIView):
         total = qs.count()
         breached = qs.filter(sla_due_at__lt=now).exclude(status__in=["Finalizado", "Cancelado"]).count()
         breached_finished = qs.filter(
-            Q(finished_at__isnull=False) & Q(finished_at__gt=models_sla_due_at())
+            Q(finished_at__isnull=False) & Q(finished_at__gt=F("sla_due_at"))
         ).count()
 
         # Tickets with SLA info for listing
@@ -169,11 +172,3 @@ class ReportsView(APIView):
         return response
 
 
-def models_sla_due_at():
-    """Helper to reference field in Q filter."""
-    from django.db.models import F
-    return F("sla_due_at")
-
-
-class SLAPolicyViewSet:
-    pass  # defined in sla_views.py
