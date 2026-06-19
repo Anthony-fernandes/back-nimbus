@@ -1,7 +1,7 @@
 import csv
 import io
 import logging
-from datetime import timedelta
+from datetime import timedelta, date as date_type
 
 from django.db.models import Avg, Count, F, Q
 
@@ -71,6 +71,31 @@ class ReportsView(APIView):
         total = qs.count()
         finished = qs.filter(status__in=["Finalizado", "Cancelado"]).count()
 
+        # Weekly breakdown — group by ISO week
+        from django.db.models.functions import TruncWeek
+        weekly_raw = (
+            qs.annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(total=Count("id"))
+            .order_by("week")
+        )
+        weekly_finished_raw = (
+            qs.filter(status__in=["Finalizado", "Cancelado"])
+            .annotate(week=TruncWeek("created_at"))
+            .values("week")
+            .annotate(total=Count("id"))
+            .order_by("week")
+        )
+        finished_by_week = {r["week"]: r["total"] for r in weekly_finished_raw}
+        by_date = [
+            {
+                "semana": r["week"].strftime("Sem %d/%m") if r["week"] else "",
+                "Abertos": r["total"],
+                "Finalizados": finished_by_week.get(r["week"], 0),
+            }
+            for r in weekly_raw
+        ]
+
         data = {
             "total": total,
             "finished": finished,
@@ -79,6 +104,7 @@ class ReportsView(APIView):
             "by_priority": by_priority,
             "by_category": by_category,
             "by_technician": by_technician,
+            "by_date": by_date,
         }
 
         rows = list(qs.values("code", "title", "status", "priority", "category", "created_at", "finished_at", "sla_due_at", "rating"))
