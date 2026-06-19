@@ -96,10 +96,26 @@ class ReportsView(APIView):
             for r in weekly_raw
         ]
 
+        # Average resolution time (hours) for finished tickets
+        finished_qs = qs.filter(status__in=["Finalizado", "Cancelado"], finished_at__isnull=False)
+        avg_res = finished_qs.aggregate(avg=Avg(F("finished_at") - F("created_at")))["avg"]
+        avg_resolution_hours = round(avg_res.total_seconds() / 3600, 1) if avg_res else None
+
+        # SLA met rate
+        sla_qs = qs.filter(sla_due_at__isnull=False)
+        sla_total = sla_qs.count()
+        sla_met = sla_qs.filter(
+            Q(finished_at__isnull=False, finished_at__lte=F("sla_due_at")) |
+            Q(finished_at__isnull=True, sla_due_at__gte=timezone.now())
+        ).count()
+        sla_met_rate = round(sla_met / sla_total * 100, 1) if sla_total else None
+
         data = {
             "total": total,
             "finished": finished,
             "open": total - finished,
+            "avg_resolution_time_hours": avg_resolution_hours,
+            "sla_met_rate": sla_met_rate,
             "by_status": by_status,
             "by_priority": by_priority,
             "by_category": by_category,
