@@ -111,6 +111,8 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.reports",
     "apps.webhooks",
+    "apps.forum",
+    "apps.doubts",
     "django_celery_beat",
 ]
 

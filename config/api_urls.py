@@ -30,6 +30,8 @@ urlpatterns = [
     path("knowledge/", include("apps.knowledge.urls")),
     path("communication/", include("apps.communication.urls")),
     path("search/", include("apps.search.urls")),
+    path("", include("apps.forum.urls")),
+    path("", include("apps.doubts.urls")),
     path("email-templates/", include("apps.notifications.email_template_urls")),
     path("sla-policies/", include("apps.tickets.sla_urls")),
     path("reports/", include("apps.reports.urls")),

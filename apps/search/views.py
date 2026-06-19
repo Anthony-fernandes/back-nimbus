@@ -5,9 +5,19 @@ from rest_framework.views import APIView
 
 from apps.tickets.models import Ticket
 from apps.knowledge.models import KnowledgeArticle
-from apps.forum.models import ForumTopic
-from apps.doubts.models import DoubtsQuestion
 from apps.projects.models import Project
+
+try:
+    from apps.forum.models import ForumTopic
+    _has_forum = True
+except ImportError:
+    _has_forum = False
+
+try:
+    from apps.doubts.models import DoubtsQuestion
+    _has_doubts = True
+except ImportError:
+    _has_doubts = False
 
 
 class GlobalSearchView(APIView):
@@ -60,40 +70,42 @@ class GlobalSearchView(APIView):
             })
 
         # ForumTopic
-        topics = ForumTopic.objects.filter(
-            company=company,
-            deleted_at__isnull=True,
-        ).filter(
-            Q(title__icontains=query) | Q(content__icontains=query)
-        )[:6]
+        if _has_forum:
+            topics = ForumTopic.objects.filter(
+                company=company,
+                deleted_at__isnull=True,
+            ).filter(
+                Q(title__icontains=query) | Q(content__icontains=query)
+            )[:6]
 
-        for t in topics:
-            results.append({
-                "type": "forum",
-                "id": t.id,
-                "title": t.title,
-                "subtitle": "Fórum",
-                "url": f"/forum/{t.id}",
-                "status": None,
-            })
+            for t in topics:
+                results.append({
+                    "type": "forum",
+                    "id": t.id,
+                    "title": t.title,
+                    "subtitle": "Fórum",
+                    "url": f"/forum/{t.id}",
+                    "status": None,
+                })
 
         # DoubtsQuestion
-        questions = DoubtsQuestion.objects.filter(
-            company=company,
-            deleted_at__isnull=True,
-        ).filter(
-            Q(title__icontains=query) | Q(content__icontains=query)
-        )[:6]
+        if _has_doubts:
+            questions = DoubtsQuestion.objects.filter(
+                company=company,
+                deleted_at__isnull=True,
+            ).filter(
+                Q(title__icontains=query) | Q(content__icontains=query)
+            )[:6]
 
-        for q_obj in questions:
-            results.append({
-                "type": "doubt",
-                "id": q_obj.id,
-                "title": q_obj.title,
-                "subtitle": "Central de Dúvidas",
-                "url": f"/doubts/{q_obj.id}",
-                "status": None,
-            })
+            for q_obj in questions:
+                results.append({
+                    "type": "doubt",
+                    "id": q_obj.id,
+                    "title": q_obj.title,
+                    "subtitle": "Central de Dúvidas",
+                    "url": f"/doubts/{q_obj.id}",
+                    "status": None,
+                })
 
         # Project
         projects = Project.objects.filter(
