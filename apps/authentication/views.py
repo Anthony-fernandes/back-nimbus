@@ -29,8 +29,18 @@ class LoginView(TokenObtainPairView):
 
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         return Response(UserSerializer(request.user).data)
+
+    def patch(self, request):
+        allowed = {"first_name", "last_name", "email", "phone", "job_title"}
+        data = {k: v for k, v in request.data.items() if k in allowed}
+        user = request.user
+        for field, value in data.items():
+            setattr(user, field, value)
+        user.save(update_fields=list(data.keys()))
+        return Response(UserSerializer(user).data)
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
