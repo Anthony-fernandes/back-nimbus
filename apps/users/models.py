@@ -67,6 +67,8 @@ class User(AbstractUser):
     mfa_enabled = models.BooleanField(default=False)
     mfa_secret = models.CharField(max_length=64, blank=True, default="")
 
+    theme_config = models.JSONField(default=dict, blank=True)
+
     permissions_json = models.JSONField(default=list, blank=True)
     granted_permissions = models.JSONField(default=dict, blank=True)
     denied_permissions = models.JSONField(default=dict, blank=True)

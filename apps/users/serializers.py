@@ -154,6 +154,7 @@ class UserSerializer(serializers.ModelSerializer):
             "company",
             "password",
             "is_active",
+            "theme_config",
         ]
         read_only_fields = ["id", "name", "resolved_permissions"]
         extra_kwargs = {"company": {"required": False}}

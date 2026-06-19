@@ -40,7 +40,7 @@ class MeView(APIView):
         return Response(UserSerializer(request.user).data)
 
     def patch(self, request):
-        allowed = {"first_name", "last_name", "email", "phone", "job_title"}
+        allowed = {"first_name", "last_name", "email", "phone", "job_title", "theme_config"}
         data = {k: v for k, v in request.data.items() if k in allowed}
         user = request.user
         for field, value in data.items():
