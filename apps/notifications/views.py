@@ -113,3 +113,24 @@ class EmailTemplateViewSet(CompanyScopedModelViewSet):
             {"event": k, "label": EVENT_LABEL.get(k, k), "default_subject": v["subject"], "default_body": v["body"]}
             for k, v in DEFAULT_EMAIL_TEMPLATES.items()
         ])
+
+    @action(detail=True, methods=["post"], url_path="test")
+    def send_test(self, request, pk=None):
+        template = self.get_object()
+        from django.core.mail import send_mail
+        import logging
+        logger = logging.getLogger(__name__)
+        email = request.data.get("email") or request.user.email
+        try:
+            send_mail(
+                subject=f"[Teste] {template.subject or template.event}",
+                message=template.body or "(sem conteúdo)",
+                html_message=template.body if template.body else None,
+                from_email=None,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+            return Response({"status": "sent", "to": email})
+        except Exception as exc:
+            logger.warning("Test email failed: %s", exc)
+            return Response({"detail": str(exc)}, status=500)
