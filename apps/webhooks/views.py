@@ -40,3 +40,19 @@ class WebhookViewSet(CompanyScopedModelViewSet):
         t = threading.Thread(target=_deliver, args=(webhook, "test", {"message": "Teste de webhook Nimbus"}), daemon=True)
         t.start()
         return Response({"detail": "Teste enviado. Verifique o histórico de entregas."})
+
+    @action(detail=True, methods=["post"], url_path="retry-delivery/(?P<delivery_id>[^/.]+)")
+    def retry_delivery(self, request, pk=None, delivery_id=None):
+        webhook = self.get_object()
+        try:
+            delivery = WebhookDelivery.objects.get(id=delivery_id, webhook=webhook)
+        except WebhookDelivery.DoesNotExist:
+            return Response({"detail": "Entrega não encontrada."}, status=404)
+        from .services import _deliver
+        t = threading.Thread(
+            target=_deliver,
+            args=(webhook, delivery.event, delivery.payload or {}),
+            daemon=True,
+        )
+        t.start()
+        return Response({"detail": "Reenvio iniciado. Verifique o histórico de entregas."})
