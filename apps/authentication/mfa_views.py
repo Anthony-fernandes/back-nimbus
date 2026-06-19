@@ -25,7 +25,7 @@ class MFASetupView(APIView):
         # Store temporarily in cache until confirmed
         cache.set(f"mfa_setup:{request.user.id}", secret, 600)
 
-        app_name = getattr(settings, 'MFA_APP_NAME', 'Stratos Suite')
+        app_name = getattr(settings, 'MFA_APP_NAME', 'NimbusDesk')
         totp = pyotp.TOTP(secret)
         qr_url = totp.provisioning_uri(
             name=request.user.email or request.user.username,

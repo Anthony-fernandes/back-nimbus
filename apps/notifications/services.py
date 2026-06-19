@@ -67,7 +67,7 @@ def _send_email(recipient: Any, title: str, message: str, link: str, event: str 
 
     try:
         send_mail(
-            subject=f"[Stratos Suite] {subject}",
+            subject=f"[NimbusDesk] {subject}",
             message=body,
             from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
             recipient_list=[recipient.email],
