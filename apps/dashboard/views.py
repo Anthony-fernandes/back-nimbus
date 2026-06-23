@@ -488,3 +488,59 @@ class DashboardDataQueryView(APIView):
             return Response({"data": data})
 
         return Response({"error": f"unknown_source: {source}"}, status=400)
+
+
+class AdminDashboardStatsView(APIView):
+    """Unified admin dashboard stats across all modules."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        company = getattr(request.user, "company", None)
+        if not company:
+            return Response({"error": "no company"}, status=400)
+
+        from apps.communication.models import (
+            ForumTopic, ForumReply, ChatConversation,
+        )
+        from apps.knowledge.models import KnowledgeArticle, ArticleRating
+        from apps.tickets.models import Ticket
+        from apps.users.models import User
+        from django.db.models import Avg
+
+        # Forum stats
+        forum_topics = ForumTopic.objects.filter(company=company).count()
+        forum_replies = ForumReply.objects.filter(topic__company=company).count()
+        forum_active_users = ForumTopic.objects.filter(company=company).values("author").distinct().count()
+
+        # KB stats
+        kb_articles = KnowledgeArticle.objects.filter(company=company, status="PUBLISHED").count()
+        kb_avg_rating_qs = ArticleRating.objects.filter(article__company=company).aggregate(
+            avg=Avg("helpful")
+        )
+        kb_avg_rating = round(float(kb_avg_rating_qs["avg"] or 0) * 5, 2)
+
+        # Tickets stats
+        tickets_open = Ticket.objects.filter(company=company, status__in=["OPEN", "IN_PROGRESS"]).count()
+        tickets_closed = Ticket.objects.filter(company=company, status="CLOSED").count()
+
+        # Chat stats
+        chat_active = ChatConversation.objects.filter(company=company, is_archived=False).count()
+
+        return Response({
+            "forum": {
+                "topics": forum_topics,
+                "replies": forum_replies,
+                "active_users": forum_active_users,
+            },
+            "kb": {
+                "articles": kb_articles,
+                "avg_rating": kb_avg_rating,
+            },
+            "tickets": {
+                "open": tickets_open,
+                "closed": tickets_closed,
+            },
+            "chat": {
+                "active_conversations": chat_active,
+            },
+        })
