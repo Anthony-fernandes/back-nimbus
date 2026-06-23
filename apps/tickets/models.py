@@ -32,6 +32,26 @@ class Ticket(BaseModel):
         ("Convertido em Atividade de Projeto", "Convertido em Atividade de Projeto"),
     ]
 
+    ITIL_TYPES = [
+        ("Incidente", "Incidente"),
+        ("Requisição", "Requisição"),
+        ("Problema", "Problema"),
+        ("Mudança", "Mudança"),
+        ("Outro", "Outro"),
+    ]
+
+    IMPACT_CHOICES = [
+        ("Alto", "Alto"),
+        ("Médio", "Médio"),
+        ("Baixo", "Baixo"),
+    ]
+
+    URGENCY_CHOICES = [
+        ("Alta", "Alta"),
+        ("Média", "Média"),
+        ("Baixa", "Baixa"),
+    ]
+
     APPROVAL_STATUS = [
         ("Nao requerido", "Nao requerido"),
         ("Aguardando Aprovacao", "Aguardando Aprovacao"),
@@ -85,10 +105,10 @@ class Ticket(BaseModel):
         related_name="owned_tickets",
     )
     category = models.CharField(max_length=80, blank=True, default="Atendimento")
-    type = models.CharField(max_length=80, blank=True, default="Incidente")
+    type = models.CharField(max_length=80, choices=ITIL_TYPES, default="Incidente")
     priority = models.CharField(max_length=30, choices=PRIORITY, default="Media")
-    impact = models.CharField(max_length=30, default="Medio")
-    urgency = models.CharField(max_length=30, default="Media")
+    impact = models.CharField(max_length=30, choices=IMPACT_CHOICES, default="Médio")
+    urgency = models.CharField(max_length=30, choices=URGENCY_CHOICES, default="Média")
     status = models.CharField(max_length=40, choices=STATUS, default="Aberto")
     technicians = models.ManyToManyField(User, blank=True, related_name="tickets")
     team = models.CharField(max_length=120, blank=True, default="")
@@ -137,14 +157,40 @@ class Ticket(BaseModel):
     rating = models.IntegerField(null=True, blank=True)  # 1-5
     rating_comment = models.TextField(blank=True)
     rated_at = models.DateTimeField(null=True, blank=True)
+    csat_sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Reabertura controlada
+    reopen_count = models.PositiveIntegerField(default=0)
+    last_reopened_at = models.DateTimeField(null=True, blank=True)
+    reopen_deadline = models.DateTimeField(null=True, blank=True)  # prazo limite para reabrir
 
     class Meta:
         ordering = ["-created_at"]
+
+    # Matrix Impacto × Urgência → Prioridade
+    _PRIORITY_MATRIX = {
+        ("Alto",  "Alta"):  "Critica",
+        ("Alto",  "Média"): "Alta",
+        ("Alto",  "Baixa"): "Alta",
+        ("Médio", "Alta"):  "Alta",
+        ("Médio", "Média"): "Media",
+        ("Médio", "Baixa"): "Baixa",
+        ("Baixo", "Alta"):  "Media",
+        ("Baixo", "Média"): "Baixa",
+        ("Baixo", "Baixa"): "Baixa",
+    }
+
+    def compute_priority_from_matrix(self):
+        return self._PRIORITY_MATRIX.get((self.impact, self.urgency))
 
     def save(self, *args, **kwargs):
         if not self.code:
             last = Ticket.objects.count() + 1
             self.code = f"NIM-{2000 + last}"
+        # Auto-calculate priority from impact × urgency if both set
+        computed = self.compute_priority_from_matrix()
+        if computed:
+            self.priority = computed
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -324,6 +370,49 @@ class SLAPolicy(BaseModel):
         return f"{self.name} ({self.response_time})"
 
 
+class TicketStatusHistory(BaseModel):
+    """Registro imutável de cada transição de status de um chamado."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_status_histories")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="status_history")
+    changed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="ticket_status_changes"
+    )
+    changed_by_name = models.CharField(max_length=255, blank=True, default="")
+    status_from = models.CharField(max_length=60, blank=True, default="")
+    status_to = models.CharField(max_length=60)
+    reason = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.ticket_id}: {self.status_from} → {self.status_to}"
+
+
+class TicketRelation(BaseModel):
+    """Vínculo entre dois chamados (duplicado, relacionado, bloqueia)."""
+    RELATION_TYPES = [
+        ("duplicado", "Duplicado de"),
+        ("relacionado", "Relacionado a"),
+        ("bloqueia", "Bloqueia"),
+        ("bloqueado_por", "Bloqueado por"),
+    ]
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_relations")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="relations")
+    related_ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="related_by")
+    relation_type = models.CharField(max_length=30, choices=RELATION_TYPES, default="relacionado")
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_ticket_relations"
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("ticket", "related_ticket", "relation_type")
+
+    def __str__(self):
+        return f"{self.ticket_id} {self.relation_type} {self.related_ticket_id}"
+
+
 class TicketWorkflowStatus(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_workflow_statuses")
     name = models.CharField(max_length=120)
@@ -345,3 +434,5 @@ class TicketWorkflowStatus(BaseModel):
 
     def __str__(self):
         return self.name
+
+from apps.tickets.business_hours_models import BusinessHours, CompanyHoliday  # noqa: F401

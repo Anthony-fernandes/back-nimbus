@@ -11,9 +11,12 @@ from .models import (
     TicketComment,
     TicketCustomField,
     TicketCustomValue,
+    TicketRelation,
+    TicketStatusHistory,
     TicketTemplate,
     TicketWorkflowStatus,
 )
+from .business_hours_models import BusinessHours, CompanyHoliday
 
 
 INTERNAL_TICKET_ROLES = {
@@ -405,3 +408,36 @@ class TicketTemplateSerializer(serializers.ModelSerializer):
         model = TicketTemplate
         fields = '__all__'
         read_only_fields = ['id', 'company', 'created_at', 'updated_at', 'deleted_at']
+
+
+class TicketStatusHistorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketStatusHistory
+        fields = "__all__"
+
+
+class TicketRelationSerializer(serializers.ModelSerializer):
+    related_ticket_code = serializers.CharField(source="related_ticket.code", read_only=True)
+    related_ticket_title = serializers.CharField(source="related_ticket.title", read_only=True)
+    related_ticket_status = serializers.CharField(source="related_ticket.status", read_only=True)
+
+    class Meta:
+        model = TicketRelation
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}, "created_by": {"required": False, "read_only": True}}
+
+
+class BusinessHoursSerializer(serializers.ModelSerializer):
+    weekday_display = serializers.CharField(source="get_weekday_display", read_only=True)
+
+    class Meta:
+        model = BusinessHours
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class CompanyHolidaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompanyHoliday
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}

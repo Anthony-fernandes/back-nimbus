@@ -27,15 +27,22 @@ from .models import (
     TicketCategory,
     TicketComment,
     TicketCustomField,
+    TicketRelation,
+    TicketStatusHistory,
     TicketWorkflowStatus,
 )
+from .business_hours_models import BusinessHours, CompanyHoliday
 from .serializers import (
+    BusinessHoursSerializer,
+    CompanyHolidaySerializer,
     TicketApprovalSerializer,
     TicketAttachmentSerializer,
     TicketCategorySerializer,
     TicketCommentSerializer,
     TicketCustomFieldSerializer,
+    TicketRelationSerializer,
     TicketSerializer,
+    TicketStatusHistorySerializer,
     TicketWorkflowStatusSerializer,
 )
 
@@ -232,6 +239,11 @@ class TicketViewSet(CompanyScopedModelViewSet):
             "priority": ticket.priority,
             "responsible_technician_id": ticket.responsible_technician_id,
         }
+        instance = serializer.instance
+        # Inject actor so the signal can record who changed the status
+        instance._changed_by = self.request.user
+        instance._changed_by_name = getattr(self.request.user, "full_name_or_username", str(self.request.user))
+        instance._status_change_reason = self.request.data.get("status_change_reason", "")
         serializer.save()
         self._post_update(serializer.instance, previous)
 
@@ -985,6 +997,14 @@ class TicketReportsView(APIView):
             qs.values("category").annotate(count=Count("id")).order_by("-count")[:10]
         )
 
+        # Reopen stats
+        reopened_count = qs.filter(reopen_count__gt=0).count()
+        reopen_rate = round(reopened_count / total * 100, 1) if total else 0
+        avg_reopens = qs.filter(reopen_count__gt=0).aggregate(
+            avg=__import__("django.db.models", fromlist=["Avg"]).Avg("reopen_count")
+        )["avg"]
+        avg_reopens = round(float(avg_reopens), 2) if avg_reopens else 0
+
         return Response({
             "total": total,
             "open": open_count,
@@ -994,4 +1014,108 @@ class TicketReportsView(APIView):
             "avg_response_hours": avg_response_hours,
             "volume_by_day": volume_by_day_data,
             "top_categories": top_categories,
+            "reopened_count": reopened_count,
+            "reopen_rate": reopen_rate,
+            "avg_reopens": avg_reopens,
         })
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TicketStatusHistory
+# ──────────────────────────────────────────────────────────────────────────────
+from common.viewsets import CompanyScopedModelViewSet as _CSV
+
+
+class TicketStatusHistoryViewSet(_CSV):
+    serializer_class = TicketStatusHistorySerializer
+    http_method_names = ["get", "head", "options"]  # read-only
+
+    def get_queryset(self):
+        qs = TicketStatusHistory.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        ).select_related("changed_by")
+        ticket_id = self.request.query_params.get("ticket")
+        if ticket_id:
+            qs = qs.filter(ticket_id=ticket_id)
+        return qs
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TicketRelation
+# ──────────────────────────────────────────────────────────────────────────────
+class TicketRelationViewSet(_CSV):
+    serializer_class = TicketRelationSerializer
+
+    def get_queryset(self):
+        qs = TicketRelation.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        ).select_related("related_ticket")
+        ticket_id = self.request.query_params.get("ticket")
+        if ticket_id:
+            qs = qs.filter(ticket_id=ticket_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reopen Ticket
+# ──────────────────────────────────────────────────────────────────────────────
+from rest_framework.decorators import api_view, permission_classes as pc
+from rest_framework.permissions import IsAuthenticated as _IA
+
+
+@api_view(["POST"])
+@pc([_IA])
+def reopen_ticket(request, pk):
+    from django.utils import timezone as tz
+    try:
+        ticket = Ticket.objects.get(pk=pk, company=request.user.company)
+    except Ticket.DoesNotExist:
+        return Response({"detail": "Não encontrado."}, status=404)
+
+    if ticket.status not in ("Finalizado", "Cancelado"):
+        return Response({"detail": "Apenas chamados finalizados ou cancelados podem ser reabertos."}, status=400)
+
+    if ticket.reopen_deadline and tz.now() > ticket.reopen_deadline:
+        return Response({"detail": f"O prazo para reabertura deste chamado expirou em {ticket.reopen_deadline.strftime('%d/%m/%Y %H:%M')}."}, status=400)
+
+    ticket._changed_by = request.user
+    ticket._changed_by_name = getattr(request.user, "full_name_or_username", str(request.user))
+    ticket._status_change_reason = request.data.get("reason", "Reaberto pelo usuário")
+    ticket.status = "Em atendimento"
+    ticket.reopen_count = (ticket.reopen_count or 0) + 1
+    ticket.last_reopened_at = tz.now()
+    ticket.reopen_deadline = None
+    ticket.finished_at = None
+    ticket.save()
+    return Response({"detail": "Chamado reaberto com sucesso.", "reopen_count": ticket.reopen_count})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BusinessHours & CompanyHoliday
+# ──────────────────────────────────────────────────────────────────────────────
+class BusinessHoursViewSet(_CSV):
+    serializer_class = BusinessHoursSerializer
+
+    def get_queryset(self):
+        return BusinessHours.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        )
+
+
+class CompanyHolidayViewSet(_CSV):
+    serializer_class = CompanyHolidaySerializer
+
+    def get_queryset(self):
+        return CompanyHoliday.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        )

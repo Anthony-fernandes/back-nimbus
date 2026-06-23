@@ -58,3 +58,26 @@ class SprintActivityPlanSerializer(serializers.ModelSerializer):
             "planned_start_date": {"write_only": True, "required": False, "allow_null": True},
             "planned_end_date": {"write_only": True, "required": False, "allow_null": True},
         }
+
+
+from apps.sprints.models import SprintRetrospective, SprintReview
+
+
+class SprintRetrospectiveSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SprintRetrospective
+        fields = "__all__"
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "created_by": {"required": False, "read_only": True},
+        }
+
+
+class SprintReviewSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SprintReview
+        fields = "__all__"
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "created_by": {"required": False, "read_only": True},
+        }

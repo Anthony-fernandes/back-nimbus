@@ -14,6 +14,7 @@ class Activity(BaseModel):
     status = models.CharField(max_length=80, default="Backlog")
     priority = models.CharField(max_length=30, default="Média")
     assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities")
+    assignees = models.ManyToManyField(User, blank=True, related_name="assigned_activities")
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities")
     sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities")
     ticket = models.ForeignKey(Ticket, on_delete=models.SET_NULL, null=True, blank=True, related_name="activities")
@@ -30,6 +31,27 @@ class Activity(BaseModel):
 
     def __str__(self):
         return self.title
+
+
+class ActivityDependency(BaseModel):
+    """Dependência entre atividades: bloqueado_por / bloqueia / relacionado."""
+    TYPES = [
+        ("bloqueia", "Bloqueia"),
+        ("bloqueado_por", "Bloqueado por"),
+        ("relacionado", "Relacionado a"),
+    ]
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_dependencies")
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="dependencies")
+    depends_on = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="dependents")
+    dependency_type = models.CharField(max_length=20, choices=TYPES, default="bloqueia")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_activity_deps")
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("activity", "depends_on", "dependency_type")
+
+    def __str__(self):
+        return f"{self.activity_id} {self.dependency_type} {self.depends_on_id}"
 
 
 class ActivityTag(BaseModel):

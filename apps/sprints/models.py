@@ -25,6 +25,41 @@ class Sprint(BaseModel):
         return self.name
 
 
+class SprintRetrospective(BaseModel):
+    """Registro da retrospectiva de uma sprint."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprint_retrospectives")
+    sprint = models.OneToOneField(Sprint, on_delete=models.CASCADE, related_name="retrospective")
+    went_well = models.TextField(blank=True, default="")
+    to_improve = models.TextField(blank=True, default="")
+    action_items = models.JSONField(default=list, blank=True)  # [{text, owner, done}]
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_retrospectives")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Retrospectiva: {self.sprint}"
+
+
+class SprintReview(BaseModel):
+    """Registro do sprint review: planejado vs entregue."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprint_reviews")
+    sprint = models.OneToOneField(Sprint, on_delete=models.CASCADE, related_name="review")
+    planned_points = models.PositiveIntegerField(default=0)
+    delivered_points = models.PositiveIntegerField(default=0)
+    planned_items = models.PositiveIntegerField(default=0)
+    delivered_items = models.PositiveIntegerField(default=0)
+    incomplete_activity_ids = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True, default="")
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_sprint_reviews")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Review: {self.sprint}"
+
+
 class SprintActivityPlan(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprint_activity_plans")
     sprint = models.ForeignKey(Sprint, on_delete=models.CASCADE, related_name="activity_plans")

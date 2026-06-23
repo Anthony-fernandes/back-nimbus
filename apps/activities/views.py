@@ -230,3 +230,27 @@ class ActivityAttachmentViewSet(CompanyScopedModelViewSet):
         if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
             raise PermissionDenied("Seu perfil nao pode excluir anexos de atividades.")
         instance.delete()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ActivityDependency
+# ──────────────────────────────────────────────────────────────────────────────
+from apps.activities.models import ActivityDependency
+from apps.activities.serializers import ActivityDependencySerializer
+
+
+class ActivityDependencyViewSet(CompanyScopedModelViewSet):
+    serializer_class = ActivityDependencySerializer
+
+    def get_queryset(self):
+        qs = ActivityDependency.objects.filter(
+            company=self.request.user.company,
+            deleted_at__isnull=True,
+        ).select_related("activity", "depends_on")
+        activity_id = self.request.query_params.get("activity")
+        if activity_id:
+            qs = qs.filter(activity_id=activity_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company, created_by=self.request.user)

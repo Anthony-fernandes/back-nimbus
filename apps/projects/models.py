@@ -15,6 +15,12 @@ class Project(BaseModel):
         ("Concluido", "Concluido"),
     ]
 
+    HEALTH_CHOICES = [
+        ("on_track", "No prazo"),
+        ("at_risk", "Em risco"),
+        ("delayed", "Atrasado"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="projects")
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="projects")
     name = models.CharField(max_length=255)
@@ -42,9 +48,35 @@ class Project(BaseModel):
     due_at = models.DateField(null=True, blank=True)
     tags = models.JSONField(default=list, blank=True)
     checklist = models.JSONField(default=list, blank=True)
+    health = models.CharField(max_length=20, choices=HEALTH_CHOICES, default="on_track")
 
     class Meta:
         ordering = ["-created_at"]
+
+    def compute_health(self):
+        """Calcula saúde automaticamente baseado em progresso vs tempo decorrido."""
+        import datetime
+        if self.status in ("Concluido", "Cancelado"):
+            return "on_track"
+        if not self.start_at or not self.due_at:
+            return "on_track"
+        today = datetime.date.today()
+        total_days = (self.due_at - self.start_at).days
+        if total_days <= 0:
+            return "delayed" if today > self.due_at else "on_track"
+        elapsed_days = (today - self.start_at).days
+        elapsed_pct = max(0, elapsed_days / total_days * 100)
+        if today > self.due_at:
+            return "delayed"
+        if elapsed_pct > self.progress + 15:
+            return "delayed"
+        if elapsed_pct > self.progress + 5:
+            return "at_risk"
+        return "on_track"
+
+    def save(self, *args, **kwargs):
+        self.health = self.compute_health()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name

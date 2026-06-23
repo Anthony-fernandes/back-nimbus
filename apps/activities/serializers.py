@@ -55,6 +55,7 @@ class ActivityAttachmentSerializer(serializers.ModelSerializer):
 
 class ActivitySerializer(serializers.ModelSerializer):
     assignee_name = serializers.CharField(source="assignee.full_name_or_username", read_only=True)
+    assignee_names = serializers.SerializerMethodField()
     project_name = serializers.CharField(source="project.name", read_only=True)
     sprint_name = serializers.CharField(source="sprint.name", read_only=True)
     ticket_code = serializers.CharField(source="ticket.code", read_only=True)
@@ -63,6 +64,9 @@ class ActivitySerializer(serializers.ModelSerializer):
         model = Activity
         fields = "__all__"
         extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+    def get_assignee_names(self, obj):
+        return [u.full_name_or_username for u in obj.assignees.all()]
 
 
 class ActivityTagSerializer(serializers.ModelSerializer):
@@ -133,4 +137,21 @@ class ActivityTimeEntrySerializer(serializers.ModelSerializer):
             "collaborator_name": {"write_only": True, "required": False},
             "work_description": {"write_only": True, "required": False},
             "generated_cost_id": {"write_only": True, "required": False},
+        }
+
+
+from apps.activities.models import ActivityDependency
+
+
+class ActivityDependencySerializer(serializers.ModelSerializer):
+    depends_on_title = serializers.CharField(source="depends_on.title", read_only=True)
+    depends_on_status = serializers.CharField(source="depends_on.status", read_only=True)
+    activity_title = serializers.CharField(source="activity.title", read_only=True)
+
+    class Meta:
+        model = ActivityDependency
+        fields = "__all__"
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "created_by": {"required": False, "read_only": True},
         }
