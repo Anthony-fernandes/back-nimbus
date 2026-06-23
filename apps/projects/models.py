@@ -108,3 +108,35 @@ class ProjectMember(BaseModel):
 
     def __str__(self):
         return f"{self.project.name} - {self.user.full_name_or_username}"
+
+
+class ProjectCustomField(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="project_custom_fields")
+    name = models.CharField(max_length=100)
+    label = models.CharField(max_length=150)
+    field_type = models.CharField(max_length=30, choices=[
+        ("text", "Texto"), ("number", "Número"), ("date", "Data"),
+        ("select", "Seleção"), ("boolean", "Sim/Não"),
+    ])
+    options = models.JSONField(default=list, blank=True)
+    required = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.label
+
+
+class ProjectCustomValue(BaseModel):
+    project = models.ForeignKey(Project, on_delete=models.CASCADE, related_name="custom_values")
+    field = models.ForeignKey(ProjectCustomField, on_delete=models.CASCADE)
+    value = models.TextField(blank=True, default="")
+
+    class Meta:
+        unique_together = [("project", "field")]
+
+    def __str__(self):
+        return f"{self.project_id} - {self.field.name}"

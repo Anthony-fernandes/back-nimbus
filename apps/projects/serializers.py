@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from apps.users.models import User, UserOrganization
 from common.access import normalize_user_role
-from .models import Project, ProjectMember
+from .models import Project, ProjectMember, ProjectCustomField, ProjectCustomValue
 
 
 INTERNAL_PROJECT_ROLES = {
@@ -205,3 +205,21 @@ class ProjectSerializer(serializers.ModelSerializer):
 
         self._sync_project_members(instance, member_links)
         return instance
+
+
+class ProjectCustomFieldSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ProjectCustomField
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class ProjectCustomValueSerializer(serializers.ModelSerializer):
+    field_label = serializers.CharField(source="field.label", read_only=True)
+    field_type = serializers.CharField(source="field.field_type", read_only=True)
+    field_options = serializers.JSONField(source="field.options", read_only=True)
+
+    class Meta:
+        model = ProjectCustomValue
+        fields = ["id", "project", "field", "field_label", "field_type", "field_options", "value"]
+        extra_kwargs = {"project": {"required": False}}

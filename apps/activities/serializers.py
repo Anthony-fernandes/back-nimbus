@@ -140,7 +140,7 @@ class ActivityTimeEntrySerializer(serializers.ModelSerializer):
         }
 
 
-from apps.activities.models import ActivityDependency
+from apps.activities.models import ActivityDependency, ActivityCustomField, ActivityCustomValue
 
 
 class ActivityDependencySerializer(serializers.ModelSerializer):
@@ -155,3 +155,21 @@ class ActivityDependencySerializer(serializers.ModelSerializer):
             "company": {"required": False, "read_only": True},
             "created_by": {"required": False, "read_only": True},
         }
+
+
+class ActivityCustomFieldSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ActivityCustomField
+        fields = "__all__"
+        extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class ActivityCustomValueSerializer(serializers.ModelSerializer):
+    field_label = serializers.CharField(source="field.label", read_only=True)
+    field_type = serializers.CharField(source="field.field_type", read_only=True)
+    field_options = serializers.JSONField(source="field.options", read_only=True)
+
+    class Meta:
+        model = ActivityCustomValue
+        fields = ["id", "activity", "field", "field_label", "field_type", "field_options", "value"]
+        extra_kwargs = {"activity": {"required": False}}

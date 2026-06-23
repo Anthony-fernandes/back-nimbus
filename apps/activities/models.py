@@ -131,3 +131,35 @@ class ActivityTimeEntry(BaseModel):
 
     def __str__(self):
         return f"{self.activity_id} - {self.date}"
+
+
+class ActivityCustomField(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="activity_custom_fields")
+    name = models.CharField(max_length=100)
+    label = models.CharField(max_length=150)
+    field_type = models.CharField(max_length=30, choices=[
+        ("text", "Texto"), ("number", "Número"), ("date", "Data"),
+        ("select", "Seleção"), ("boolean", "Sim/Não"),
+    ])
+    options = models.JSONField(default=list, blank=True)
+    required = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "name"]
+
+    def __str__(self):
+        return self.label
+
+
+class ActivityCustomValue(BaseModel):
+    activity = models.ForeignKey(Activity, on_delete=models.CASCADE, related_name="custom_values")
+    field = models.ForeignKey(ActivityCustomField, on_delete=models.CASCADE)
+    value = models.TextField(blank=True, default="")
+
+    class Meta:
+        unique_together = [("activity", "field")]
+
+    def __str__(self):
+        return f"{self.activity_id} - {self.field.name}"

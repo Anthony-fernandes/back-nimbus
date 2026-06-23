@@ -9,8 +9,8 @@ from common.access import (
     user_has_permission,
 )
 from common.viewsets import CompanyScopedModelViewSet
-from .models import Project
-from .serializers import ProjectSerializer
+from .models import Project, ProjectCustomField, ProjectCustomValue
+from .serializers import ProjectSerializer, ProjectCustomFieldSerializer, ProjectCustomValueSerializer
 
 
 class ProjectViewSet(CompanyScopedModelViewSet):
@@ -62,3 +62,26 @@ class ProjectViewSet(CompanyScopedModelViewSet):
         if not user_has_permission(self.request.user, "projects.delete"):
             raise PermissionDenied("Seu perfil nao pode excluir projetos.")
         instance.delete()
+
+
+class ProjectCustomFieldViewSet(CompanyScopedModelViewSet):
+    serializer_class = ProjectCustomFieldSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return ProjectCustomField.objects.filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class ProjectCustomValueViewSet(CompanyScopedModelViewSet):
+    serializer_class = ProjectCustomValueSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ProjectCustomValue.objects.filter(project__company=self.request.user.company)
+        project_id = self.request.query_params.get("project")
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        return qs

@@ -235,8 +235,8 @@ class ActivityAttachmentViewSet(CompanyScopedModelViewSet):
 # ──────────────────────────────────────────────────────────────────────────────
 # ActivityDependency
 # ──────────────────────────────────────────────────────────────────────────────
-from apps.activities.models import ActivityDependency
-from apps.activities.serializers import ActivityDependencySerializer
+from apps.activities.models import ActivityDependency, ActivityCustomField, ActivityCustomValue
+from apps.activities.serializers import ActivityDependencySerializer, ActivityCustomFieldSerializer, ActivityCustomValueSerializer
 
 
 class ActivityDependencyViewSet(CompanyScopedModelViewSet):
@@ -254,3 +254,26 @@ class ActivityDependencyViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company, created_by=self.request.user)
+
+
+class ActivityCustomFieldViewSet(CompanyScopedModelViewSet):
+    serializer_class = ActivityCustomFieldSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return ActivityCustomField.objects.filter(company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class ActivityCustomValueViewSet(CompanyScopedModelViewSet):
+    serializer_class = ActivityCustomValueSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = ActivityCustomValue.objects.filter(activity__company=self.request.user.company)
+        activity_id = self.request.query_params.get("activity")
+        if activity_id:
+            qs = qs.filter(activity_id=activity_id)
+        return qs
