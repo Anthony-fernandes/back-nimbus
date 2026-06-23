@@ -76,6 +76,22 @@ class KnowledgeArticleViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company, author=self.request.user)
 
+    def perform_update(self, serializer):
+        article = self.get_object()
+        # Save a version snapshot before updating
+        last_version = article.versions.order_by("-version").first()
+        next_version_num = (last_version.version + 1) if last_version else article.version
+        change_summary = self.request.data.get("change_summary", "")
+        ArticleVersion.objects.create(
+            article=article,
+            version=article.version,
+            title=article.title,
+            content=article.content,
+            changed_by=self.request.user,
+            change_summary=change_summary,
+        )
+        serializer.save(version=next_version_num)
+
     @action(detail=True, methods=["post"])
     def publish(self, request, pk=None):
         article = self.get_object()
