@@ -1,4 +1,5 @@
 from django.db import models
+from django.conf import settings
 from apps.companies.models import Company
 from apps.users.models import User
 from apps.knowledge.models import KnowledgeTag
@@ -275,3 +276,31 @@ class ForumUserReputation(BaseModel):
 
     def __str__(self):
         return f"{self.user_id} rep={self.score}"
+
+
+class ForumBadge(BaseModel):
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    icon = models.CharField(max_length=50, default="award")
+    criteria_type = models.CharField(max_length=50, choices=[
+        ("reputation", "Reputação"), ("topics", "Tópicos"),
+        ("replies", "Respostas"), ("best_answers", "Melhores respostas")
+    ])
+    criteria_value = models.IntegerField(default=0)
+
+    class Meta:
+        app_label = "communication"
+
+    def __str__(self):
+        return self.name
+
+
+class UserBadge(BaseModel):
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="user_badges")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="forum_badges")
+    badge = models.ForeignKey(ForumBadge, on_delete=models.CASCADE, related_name="user_badges")
+    earned_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        app_label = "communication"
+        unique_together = ("company", "user", "badge")

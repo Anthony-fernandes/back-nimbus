@@ -19,6 +19,7 @@ from .models import (
     DoubtsQuestion,
     DoubtsQuestionLike,
     DoubtsQuestionRating,
+    ForumBadge,
     ForumCategory,
     ForumComment,
     ForumReply,
@@ -30,6 +31,7 @@ from .models import (
     ForumTopicEdit,
     ForumTopicLike,
     ForumUserReputation,
+    UserBadge,
 )
 from .serializers import (
     ChatConversationSerializer,
@@ -38,6 +40,7 @@ from .serializers import (
     DoubtsAnswerLikeSerializer,
     DoubtsAnswerSerializer,
     DoubtsQuestionSerializer,
+    ForumBadgeSerializer,
     ForumCategorySerializer,
     ForumCommentSerializer,
     ForumReplyEditSerializer,
@@ -46,6 +49,7 @@ from .serializers import (
     ForumTopicEditSerializer,
     ForumTopicSerializer,
     ForumUserReputationSerializer,
+    UserBadgeSerializer,
 )
 
 
@@ -97,9 +101,33 @@ def _notify_mentions(content, actor, company, link, entity_type, entity_id):
 
 def _add_reputation(user, company, points):
     """Add or remove reputation points for a user."""
+    if not user:
+        return
     rep, _ = ForumUserReputation.objects.get_or_create(company=company, user=user)
     rep.score = max(0, rep.score + points)
     rep.save(update_fields=["score", "updated_at"])
+    # Award badges based on reputation thresholds
+    _check_and_award_badges(user, company, rep.score)
+
+
+def _check_and_award_badges(user, company, reputation_score):
+    """Award ForumBadge entries to a user when they cross criteria thresholds."""
+    try:
+        from .models import ForumBadge, UserBadge
+        topics_count = ForumTopic.objects.filter(author=user, company=company).count()
+        replies_count = ForumReply.objects.filter(author=user, topic__company=company).count()
+        best_answers = ForumReply.objects.filter(author=user, is_best_answer=True, topic__company=company).count()
+        metric_map = {
+            "reputation": reputation_score,
+            "topics": topics_count,
+            "replies": replies_count,
+            "best_answers": best_answers,
+        }
+        for badge in ForumBadge.objects.all():
+            if metric_map.get(badge.criteria_type, 0) >= badge.criteria_value:
+                UserBadge.objects.get_or_create(company=company, user=user, badge=badge)
+    except Exception:
+        pass
 
 
 class ForumCategoryViewSet(CompanyScopedModelViewSet):
@@ -405,6 +433,12 @@ class ChatMessageViewSet(CompanyScopedModelViewSet):
             reaction.delete()
         return Response(self.get_serializer(message).data)
 
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        msg = self.get_object()
+        msg.read_by.add(request.user)
+        return Response({"status": "ok"})
+
     @action(detail=True, methods=["post"], url_path="forward")
     def forward(self, request, pk=None):
         message = self.get_object()
@@ -704,3 +738,30 @@ class ForumUserProfileView(APIView):
             "recent_topics": recent_topics,
             "recent_replies": recent_replies,
         })
+
+
+class ForumBadgeViewSet(CompanyScopedModelViewSet):
+    queryset = ForumBadge.objects.all()
+    serializer_class = ForumBadgeSerializer
+    permission_classes = [IsAuthenticated]
+    search_fields = ["name"]
+    ordering_fields = "__all__"
+    company_field_name = None  # badges are global, not company-scoped
+
+    def get_queryset(self):
+        return ForumBadge.objects.all()
+
+
+class UserBadgeViewSet(CompanyScopedModelViewSet):
+    queryset = UserBadge.objects.all()
+    serializer_class = UserBadgeSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["user", "badge"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        return self.queryset.filter(company=company)

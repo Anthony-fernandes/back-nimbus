@@ -9,6 +9,7 @@ from .models import (
     DoubtsQuestion,
     DoubtsQuestionLike,
     DoubtsQuestionRating,
+    ForumBadge,
     ForumCategory,
     ForumComment,
     ForumReply,
@@ -17,6 +18,7 @@ from .models import (
     ForumTopic,
     ForumTopicEdit,
     ForumUserReputation,
+    UserBadge,
 )
 
 
@@ -111,6 +113,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
     reply_to_preview = serializers.SerializerMethodField()
     reply_to_author = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
+    read_by_ids = serializers.PrimaryKeyRelatedField(many=True, read_only=True, source="read_by")
 
     class Meta:
         model = ChatMessage
@@ -244,3 +247,23 @@ class ForumUserReputationSerializer(serializers.ModelSerializer):
     class Meta:
         model = ForumUserReputation
         fields = ["id", "user", "username", "full_name", "score"]
+
+
+class ForumBadgeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ForumBadge
+        fields = "__all__"
+
+
+class UserBadgeSerializer(serializers.ModelSerializer):
+    badge_name = serializers.CharField(source="badge.name", read_only=True)
+    badge_icon = serializers.CharField(source="badge.icon", read_only=True)
+    badge_description = serializers.CharField(source="badge.description", read_only=True)
+
+    class Meta:
+        model = UserBadge
+        fields = ["id", "badge", "badge_name", "badge_icon", "badge_description", "earned_at", "user", "company"]
+        extra_kwargs = {
+            "user": {"read_only": True},
+            "company": {"read_only": True},
+        }

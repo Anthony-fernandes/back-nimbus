@@ -7,6 +7,7 @@ from .views import (
     DoubtsAnswerLikeViewSet,
     DoubtsAnswerViewSet,
     DoubtsQuestionViewSet,
+    ForumBadgeViewSet,
     ForumCategoryViewSet,
     ForumCommentViewSet,
     ForumReplyEditViewSet,
@@ -16,6 +17,7 @@ from .views import (
     ForumTopicViewSet,
     ForumUserProfileView,
     ForumUserReputationViewSet,
+    UserBadgeViewSet,
 )
 
 router = DefaultRouter()
@@ -33,6 +35,8 @@ router.register(r"chat-messages", ChatMessageViewSet, basename="chat-message")
 router.register(r"doubts-questions", DoubtsQuestionViewSet, basename="doubts-question")
 router.register(r"doubts-answers", DoubtsAnswerViewSet, basename="doubts-answer")
 router.register(r"doubts-answer-likes", DoubtsAnswerLikeViewSet, basename="doubts-answer-like")
+router.register(r"forum-badges", ForumBadgeViewSet, basename="forum-badge")
+router.register(r"user-badges", UserBadgeViewSet, basename="user-badge")
 
 urlpatterns = router.urls + [
     path("forum-users/<str:user_id>/profile/", ForumUserProfileView.as_view(), name="forum-user-profile"),

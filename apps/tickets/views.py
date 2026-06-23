@@ -8,6 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.notifications.services import notify, notify_many
 from common.access import (
@@ -933,3 +934,64 @@ class TicketCustomFieldViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class TicketReportsView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Avg, Count
+        from django.db.models.functions import TruncDate
+        import datetime
+
+        company = request.user.company
+        qs = Ticket.objects.filter(company=company, deleted_at__isnull=True)
+
+        total = qs.count()
+        open_count = qs.filter(status__in=["Aberto", "Triagem", "Em atendimento", "Aguardando cliente", "Aguardando atendimento"]).count()
+        closed_count = qs.filter(status__in=["Finalizado", "Cancelado"]).count()
+        pending_count = total - open_count - closed_count
+
+        avg_csat = qs.filter(rating__isnull=False).aggregate(avg=Avg("rating"))["avg"]
+        avg_csat = round(float(avg_csat), 2) if avg_csat is not None else None
+
+        # Average response hours: created_at to first comment
+        from apps.tickets.models import TicketComment
+        first_comments = TicketComment.objects.filter(
+            company=company, is_internal=False, deleted_at__isnull=True
+        ).values("ticket_id").annotate(first_reply=__import__("django.db.models", fromlist=["Min"]).Min("created_at"))
+        response_hours_list = []
+        ticket_map = {t.id: t.created_at for t in qs.only("id", "created_at")}
+        for fc in first_comments:
+            tid = fc["ticket_id"]
+            if tid in ticket_map:
+                delta = fc["first_reply"] - ticket_map[tid]
+                response_hours_list.append(delta.total_seconds() / 3600)
+        avg_response_hours = round(sum(response_hours_list) / len(response_hours_list), 2) if response_hours_list else None
+
+        # Volume last 30 days
+        cutoff = timezone.now() - datetime.timedelta(days=30)
+        volume_qs = (
+            qs.filter(created_at__gte=cutoff)
+            .annotate(date=TruncDate("created_at"))
+            .values("date")
+            .annotate(count=Count("id"))
+            .order_by("date")
+        )
+        volume_by_day_data = [{"date": str(item["date"]), "count": item["count"]} for item in volume_qs]
+
+        # Top categories
+        top_categories = list(
+            qs.values("category").annotate(count=Count("id")).order_by("-count")[:10]
+        )
+
+        return Response({
+            "total": total,
+            "open": open_count,
+            "closed": closed_count,
+            "pending": pending_count,
+            "avg_csat": avg_csat,
+            "avg_response_hours": avg_response_hours,
+            "volume_by_day": volume_by_day_data,
+            "top_categories": top_categories,
+        })
