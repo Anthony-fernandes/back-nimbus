@@ -114,6 +114,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
     reply_to_author = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
     read_by_ids = serializers.PrimaryKeyRelatedField(many=True, read_only=True, source="read_by")
+    file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatMessage
@@ -122,6 +123,14 @@ class ChatMessageSerializer(serializers.ModelSerializer):
             "author": {"required": False, "read_only": True},
             "conversation": {"required": False},
         }
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        request = self.context.get("request")
+        if request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url
 
     def get_reply_to_preview(self, obj):
         if obj.reply_to:
@@ -142,6 +151,7 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 
 class ChatConversationSerializer(serializers.ModelSerializer):
     participant_names = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatConversation
@@ -154,6 +164,12 @@ class ChatConversationSerializer(serializers.ModelSerializer):
 
     def get_participant_names(self, obj):
         return [u.full_name_or_username for u in obj.participants.all()]
+
+    def get_unread_count(self, obj):
+        request = self.context.get("request")
+        if not request:
+            return 0
+        return obj.messages.exclude(read_by=request.user).count()
 
 
 class DoubtsAnswerSerializer(serializers.ModelSerializer):

@@ -412,6 +412,22 @@ class ChatMessageViewSet(CompanyScopedModelViewSet):
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=["last_message_at", "updated_at"])
 
+        # Notify other participants
+        from apps.notifications.models import Notification
+        preview = (message.content or message.file_name or "Arquivo")[:80]
+        sender_name = user.get_full_name() or user.username
+        for participant in conversation.participants.exclude(id=user.id):
+            Notification.objects.create(
+                company=user.company,
+                recipient=participant,
+                actor=user,
+                title=f"Nova mensagem de {sender_name}",
+                message=preview,
+                category="Chat",
+                event="chat.new_message",
+                link=f"/chat",
+            )
+
     def perform_update(self, serializer):
         serializer.save(is_edited=True)
 

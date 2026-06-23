@@ -1,5 +1,7 @@
 from django.contrib import admin
 from django.urls import path, include
+from django.conf import settings
+from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from rest_framework.permissions import IsAuthenticated
 from apps.core.views import health_check
@@ -12,4 +14,4 @@ urlpatterns = [
     path("api/redoc/", SpectacularRedocView.as_view(url_name="schema"), name="redoc"),
     path("api/v1/", include("config.api_urls")),
     path("api/", include("config.api_urls")),  # backwards compat
-]
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
