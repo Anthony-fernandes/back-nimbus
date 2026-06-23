@@ -1,9 +1,12 @@
 from django.db import models
 from django.utils import timezone
+from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.viewsets import GenericViewSet
 
 from common.viewsets import CompanyScopedModelViewSet
 from .models import (
@@ -20,10 +23,13 @@ from .models import (
     ForumComment,
     ForumReply,
     ForumReplyDownvote,
+    ForumReplyEdit,
     ForumReplyLike,
     ForumTopic,
     ForumTopicDownvote,
+    ForumTopicEdit,
     ForumTopicLike,
+    ForumUserReputation,
 )
 from .serializers import (
     ChatConversationSerializer,
@@ -34,10 +40,66 @@ from .serializers import (
     DoubtsQuestionSerializer,
     ForumCategorySerializer,
     ForumCommentSerializer,
+    ForumReplyEditSerializer,
     ForumReplyLikeSerializer,
     ForumReplySerializer,
+    ForumTopicEditSerializer,
     ForumTopicSerializer,
+    ForumUserReputationSerializer,
 )
+
+
+def _notify_forum(recipient, actor, title, message, link, event, company):
+    """Create an in-app notification for forum events, skipping if same user."""
+    if not recipient or recipient == actor:
+        return
+    from apps.notifications.models import Notification
+    Notification.objects.create(
+        company=company,
+        recipient=recipient,
+        actor=actor,
+        actor_name=actor.get_full_name() or actor.username,
+        category="Forum",
+        event=event,
+        title=title,
+        message=message,
+        link=link,
+    )
+
+
+def _notify_mentions(content, actor, company, link, entity_type, entity_id):
+    """Parse @username mentions and notify mentioned users."""
+    import re
+    from apps.users.models import User as UserModel
+    from apps.notifications.models import Notification
+    usernames = set(re.findall(r'@(\w+)', content))
+    for username in usernames:
+        try:
+            user = UserModel.objects.get(username=username, company=company)
+            if user == actor:
+                continue
+            Notification.objects.create(
+                company=company,
+                recipient=user,
+                actor=actor,
+                actor_name=actor.get_full_name() or actor.username,
+                category="Forum",
+                event="mention",
+                title=f"{actor.get_full_name() or actor.username} mencionou você",
+                message="Você foi mencionado em uma postagem do fórum.",
+                link=link,
+                entity_type=entity_type,
+                entity_id=entity_id,
+            )
+        except UserModel.DoesNotExist:
+            pass
+
+
+def _add_reputation(user, company, points):
+    """Add or remove reputation points for a user."""
+    rep, _ = ForumUserReputation.objects.get_or_create(company=company, user=user)
+    rep.score = max(0, rep.score + points)
+    rep.save(update_fields=["score", "updated_at"])
 
 
 class ForumCategoryViewSet(CompanyScopedModelViewSet):
@@ -58,7 +120,23 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
     ordering_fields = "__all__"
 
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company, author=self.request.user)
+        topic = serializer.save(company=self.request.user.company, author=self.request.user)
+        _notify_mentions(topic.content, self.request.user, self.request.user.company, f"/forum/{topic.id}", "forum_topic", str(topic.id))
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        old_title = instance.title
+        old_content = instance.content
+        updated = serializer.save()
+        ForumTopicEdit.objects.create(
+            topic=updated,
+            editor=self.request.user,
+            old_title=old_title,
+            new_title=updated.title,
+            old_content=old_content,
+            new_content=updated.content,
+        )
+        _notify_mentions(updated.content, self.request.user, self.request.user.company, f"/forum/{updated.id}", "forum_topic", str(updated.id))
 
     @action(detail=True, methods=["post"], url_path="mark-best-answer")
     def mark_best_answer(self, request, pk=None):
@@ -76,6 +154,8 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
         reply.save(update_fields=["is_best_answer", "updated_at"])
         topic.best_answer = reply
         topic.save(update_fields=["best_answer", "updated_at"])
+        _notify_forum(reply.author, request.user, "Sua resposta foi marcada como melhor resposta", f"Sua resposta no tópico '{topic.title}' foi marcada como melhor resposta.", f"/forum/{topic.id}", "best_answer", request.user.company)
+        _add_reputation(reply.author, request.user.company, 15)
         return Response(self.get_serializer(topic).data)
 
     @action(detail=True, methods=["post"], url_path="convert-to-kb")
@@ -117,10 +197,13 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
         like, created = ForumTopicLike.objects.get_or_create(topic=topic, user=request.user)
         if created:
             topic.likes_count += 1
+            topic.save(update_fields=["likes_count", "updated_at"])
+            _notify_forum(topic.author, request.user, f"{request.user.get_full_name() or request.user.username} curtiu sua pergunta", topic.title, f"/forum/{topic.id}", "topic_like", request.user.company)
+            _add_reputation(topic.author, request.user.company, 5)
         else:
             like.delete()
             topic.likes_count = max(0, topic.likes_count - 1)
-        topic.save(update_fields=["likes_count", "updated_at"])
+            topic.save(update_fields=["likes_count", "updated_at"])
         return Response(self.get_serializer(topic).data)
 
     @action(detail=True, methods=["post"], url_path="toggle-downvote")
@@ -171,6 +254,21 @@ class ForumReplyViewSet(CompanyScopedModelViewSet):
         topic = reply.topic
         topic.replies_count += 1
         topic.save(update_fields=["replies_count", "updated_at"])
+        _notify_forum(topic.author, self.request.user, f"Nova resposta em '{topic.title}'", f"{self.request.user.get_full_name() or self.request.user.username} respondeu sua pergunta.", f"/forum/{topic.id}", "new_reply", self.request.user.company)
+        _notify_mentions(reply.content, self.request.user, self.request.user.company, f"/forum/{topic.id}", "forum_reply", str(reply.id))
+        _add_reputation(self.request.user, self.request.user.company, 2)
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        old_content = instance.content
+        updated = serializer.save()
+        ForumReplyEdit.objects.create(
+            reply=updated,
+            editor=self.request.user,
+            old_content=old_content,
+            new_content=updated.content,
+        )
+        _notify_mentions(updated.content, self.request.user, self.request.user.company, f"/forum/{updated.topic_id}", "forum_reply", str(updated.id))
 
     @action(detail=True, methods=["post"], url_path="toggle-like")
     def toggle_like(self, request, pk=None):
@@ -179,6 +277,8 @@ class ForumReplyViewSet(CompanyScopedModelViewSet):
         if created:
             reply.likes_count += 1
             reply.save(update_fields=["likes_count", "updated_at"])
+            _notify_forum(reply.author, request.user, "Sua resposta foi curtida", f"{request.user.get_full_name() or request.user.username} curtiu sua resposta.", f"/forum/{reply.topic_id}", "reply_like", request.user.company)
+            _add_reputation(reply.author, request.user.company, 3)
         else:
             like.delete()
             reply.likes_count = max(0, reply.likes_count - 1)
@@ -514,3 +614,93 @@ class ContentFlagViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
+
+    @action(detail=True, methods=["post"])
+    def resolve(self, request, pk=None):
+        flag = self.get_object()
+        action_taken = request.data.get("action_taken", "reviewed")
+        flag.reviewed = True
+        flag.action_taken = action_taken
+        flag.save(update_fields=["reviewed", "action_taken", "updated_at"])
+        return Response(self.get_serializer(flag).data)
+
+
+class ForumTopicEditViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
+    queryset = ForumTopicEdit.objects.all()
+    serializer_class = ForumTopicEditSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["topic"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        return self.queryset.filter(topic__company=company)
+
+
+class ForumReplyEditViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
+    queryset = ForumReplyEdit.objects.all()
+    serializer_class = ForumReplyEditSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["reply"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        return self.queryset.filter(reply__topic__company=company)
+
+
+class ForumUserReputationViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
+    queryset = ForumUserReputation.objects.all()
+    serializer_class = ForumUserReputationSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["user"]
+    ordering_fields = ["score"]
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        return self.queryset.filter(company=company)
+
+
+class ForumUserProfileView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, user_id):
+        from apps.users.models import User as UserModel
+        try:
+            user = UserModel.objects.get(id=user_id, company=request.user.company)
+        except UserModel.DoesNotExist:
+            return Response({"detail": "Not found."}, status=404)
+        topics_count = ForumTopic.objects.filter(author=user, company=request.user.company).count()
+        replies_count = ForumReply.objects.filter(author=user, topic__company=request.user.company).count()
+        best_answers = ForumReply.objects.filter(author=user, is_best_answer=True, topic__company=request.user.company).count()
+        rep_obj = ForumUserReputation.objects.filter(user=user, company=request.user.company).first()
+        reputation = rep_obj.score if rep_obj else 0
+        recent_topics = ForumTopicSerializer(
+            ForumTopic.objects.filter(author=user, company=request.user.company).order_by("-created_at")[:5],
+            many=True, context={"request": request}
+        ).data
+        recent_replies = ForumReplySerializer(
+            ForumReply.objects.filter(author=user, topic__company=request.user.company).order_by("-created_at")[:5],
+            many=True, context={"request": request}
+        ).data
+        return Response({
+            "id": str(user.id),
+            "username": user.username,
+            "full_name": user.get_full_name(),
+            "job_title": getattr(user, "job_title", ""),
+            "topics_count": topics_count,
+            "replies_count": replies_count,
+            "best_answers": best_answers,
+            "reputation": reputation,
+            "recent_topics": recent_topics,
+            "recent_replies": recent_replies,
+        })

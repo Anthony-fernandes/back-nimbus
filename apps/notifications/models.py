@@ -15,6 +15,7 @@ class Notification(BaseModel):
         ("Atividades", "Atividades"),
         ("Comentarios", "Comentarios"),
         ("Sistema", "Sistema"),
+        ("Forum", "Forum"),
     ]
 
     company = models.ForeignKey(

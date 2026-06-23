@@ -119,6 +119,7 @@ class ContentFlag(BaseModel):
     reason = models.CharField(max_length=50, choices=REASON_CHOICES, default="other")
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="content_flags")
     reviewed = models.BooleanField(default=False)
+    action_taken = models.CharField(max_length=100, blank=True, default="")
 
     class Meta:
         ordering = ["-created_at"]
@@ -237,3 +238,40 @@ class DoubtsAnswerLike(BaseModel):
 
     class Meta:
         unique_together = ("answer", "user")
+
+
+class ForumTopicEdit(BaseModel):
+    topic = models.ForeignKey(ForumTopic, on_delete=models.CASCADE, related_name="edits")
+    editor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="forum_topic_edits")
+    old_title = models.CharField(max_length=255, blank=True, default="")
+    new_title = models.CharField(max_length=255, blank=True, default="")
+    old_content = models.TextField(blank=True, default="")
+    new_content = models.TextField(blank=True, default="")
+    edit_comment = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ForumReplyEdit(BaseModel):
+    reply = models.ForeignKey(ForumReply, on_delete=models.CASCADE, related_name="edits")
+    editor = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="forum_reply_edits")
+    old_content = models.TextField(blank=True, default="")
+    new_content = models.TextField(blank=True, default="")
+    edit_comment = models.CharField(max_length=255, blank=True, default="")
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
+class ForumUserReputation(BaseModel):
+    """Reputação acumulada no fórum por usuário/empresa."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="forum_reputations")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="forum_reputation")
+    score = models.IntegerField(default=0)
+
+    class Meta:
+        unique_together = ("company", "user")
+
+    def __str__(self):
+        return f"{self.user_id} rep={self.score}"

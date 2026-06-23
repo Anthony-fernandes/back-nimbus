@@ -12,8 +12,11 @@ from .models import (
     ForumCategory,
     ForumComment,
     ForumReply,
+    ForumReplyEdit,
     ForumReplyLike,
     ForumTopic,
+    ForumTopicEdit,
+    ForumUserReputation,
 )
 
 
@@ -26,6 +29,18 @@ class ForumCategorySerializer(serializers.ModelSerializer):
 
 class ForumReplySerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
+    edit_count = serializers.SerializerMethodField()
+    author_reputation = serializers.SerializerMethodField()
+
+    def get_edit_count(self, obj):
+        return obj.edits.count()
+
+    def get_author_reputation(self, obj):
+        if not obj.author:
+            return 0
+        return ForumUserReputation.objects.filter(
+            company=obj.topic.company, user=obj.author
+        ).values_list("score", flat=True).first() or 0
 
     class Meta:
         model = ForumReply
@@ -41,6 +56,18 @@ class ForumReplySerializer(serializers.ModelSerializer):
 class ForumTopicSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
+    edit_count = serializers.SerializerMethodField()
+    author_reputation = serializers.SerializerMethodField()
+
+    def get_edit_count(self, obj):
+        return obj.edits.count()
+
+    def get_author_reputation(self, obj):
+        if not obj.author:
+            return 0
+        return ForumUserReputation.objects.filter(
+            company=obj.company, user=obj.author
+        ).values_list("score", flat=True).first() or 0
 
     class Meta:
         model = ForumTopic
@@ -180,3 +207,40 @@ class ChatMessageReactionSerializer(serializers.ModelSerializer):
         model = ChatMessageReaction
         fields = "__all__"
         extra_kwargs = {"user": {"required": False, "read_only": True}}
+
+
+class ForumTopicEditSerializer(serializers.ModelSerializer):
+    editor_name = serializers.SerializerMethodField()
+
+    def get_editor_name(self, obj):
+        return obj.editor.get_full_name() or obj.editor.username if obj.editor else ""
+
+    class Meta:
+        model = ForumTopicEdit
+        fields = ["id", "editor", "editor_name", "old_title", "new_title", "old_content", "new_content", "edit_comment", "created_at"]
+
+
+class ForumReplyEditSerializer(serializers.ModelSerializer):
+    editor_name = serializers.SerializerMethodField()
+
+    def get_editor_name(self, obj):
+        return obj.editor.get_full_name() or obj.editor.username if obj.editor else ""
+
+    class Meta:
+        model = ForumReplyEdit
+        fields = ["id", "editor", "editor_name", "old_content", "new_content", "edit_comment", "created_at"]
+
+
+class ForumUserReputationSerializer(serializers.ModelSerializer):
+    username = serializers.SerializerMethodField()
+    full_name = serializers.SerializerMethodField()
+
+    def get_username(self, obj):
+        return obj.user.username if obj.user else ""
+
+    def get_full_name(self, obj):
+        return obj.user.get_full_name() if obj.user else ""
+
+    class Meta:
+        model = ForumUserReputation
+        fields = ["id", "user", "username", "full_name", "score"]
