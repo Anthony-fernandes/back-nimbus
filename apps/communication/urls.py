@@ -2,10 +2,12 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ChatConversationViewSet,
     ChatMessageViewSet,
+    ContentFlagViewSet,
     DoubtsAnswerLikeViewSet,
     DoubtsAnswerViewSet,
     DoubtsQuestionViewSet,
     ForumCategoryViewSet,
+    ForumCommentViewSet,
     ForumReplyLikeViewSet,
     ForumReplyViewSet,
     ForumTopicViewSet,
@@ -16,6 +18,8 @@ router.register(r"forum-categories", ForumCategoryViewSet, basename="forum-categ
 router.register(r"forum-topics", ForumTopicViewSet, basename="forum-topic")
 router.register(r"forum-replies", ForumReplyViewSet, basename="forum-reply")
 router.register(r"forum-reply-likes", ForumReplyLikeViewSet, basename="forum-reply-like")
+router.register(r"forum-comments", ForumCommentViewSet, basename="forum-comment")
+router.register(r"flags", ContentFlagViewSet, basename="flag")
 router.register(r"chat-conversations", ChatConversationViewSet, basename="chat-conversation")
 router.register(r"chat-messages", ChatMessageViewSet, basename="chat-message")
 router.register(r"doubts-questions", DoubtsQuestionViewSet, basename="doubts-question")

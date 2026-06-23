@@ -10,13 +10,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 from common.viewsets import CompanyScopedModelViewSet
-from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeTag
+from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeInternalComment, KnowledgeTag
 from .serializers import (
     ArticleAttachmentSerializer,
     ArticleRatingSerializer,
     ArticleVersionSerializer,
     KnowledgeArticleSerializer,
     KnowledgeCategorySerializer,
+    KnowledgeInternalCommentSerializer,
     KnowledgeTagSerializer,
 )
 
@@ -124,6 +125,13 @@ class KnowledgeArticleViewSet(CompanyScopedModelViewSet):
         article.save(update_fields=["views_count", "updated_at"])
         return Response({"views_count": article.views_count})
 
+    @action(detail=True, methods=["post"], url_path="request-review")
+    def request_review(self, request, pk=None):
+        article = self.get_object()
+        article.status = "REVIEW"
+        article.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(article).data)
+
 
 class ArticleVersionViewSet(CompanyScopedModelViewSet):
     queryset = ArticleVersion.objects.all()
@@ -174,3 +182,22 @@ class ArticleRatingViewSet(CompanyScopedModelViewSet):
         if not company:
             return self.queryset.none()
         return self.queryset.filter(article__company=company)
+
+
+class KnowledgeInternalCommentViewSet(CompanyScopedModelViewSet):
+    queryset = KnowledgeInternalComment.objects.all()
+    serializer_class = KnowledgeInternalCommentSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["article", "author"]
+    ordering_fields = "__all__"
+    company_field_name = "article__company"
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        return KnowledgeInternalComment.objects.filter(article__company=company)
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)

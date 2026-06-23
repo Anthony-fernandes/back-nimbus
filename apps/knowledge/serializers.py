@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeTag
+from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeInternalComment, KnowledgeTag
 
 
 class KnowledgeCategorySerializer(serializers.ModelSerializer):
@@ -56,3 +56,12 @@ class ArticleRatingSerializer(serializers.ModelSerializer):
         model = ArticleRating
         fields = "__all__"
         extra_kwargs = {"user": {"required": False, "read_only": True}}
+
+
+class KnowledgeInternalCommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
+
+    class Meta:
+        model = KnowledgeInternalComment
+        fields = "__all__"
+        extra_kwargs = {"author": {"required": False, "read_only": True}}

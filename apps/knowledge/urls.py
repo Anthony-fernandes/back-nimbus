@@ -5,6 +5,7 @@ from .views import (
     ArticleVersionViewSet,
     KnowledgeArticleViewSet,
     KnowledgeCategoryViewSet,
+    KnowledgeInternalCommentViewSet,
     KnowledgeTagViewSet,
 )
 
@@ -15,5 +16,6 @@ router.register(r"articles", KnowledgeArticleViewSet, basename="knowledge-articl
 router.register(r"article-versions", ArticleVersionViewSet, basename="article-version")
 router.register(r"article-attachments", ArticleAttachmentViewSet, basename="article-attachment")
 router.register(r"article-ratings", ArticleRatingViewSet, basename="article-rating")
+router.register(r"internal-comments", KnowledgeInternalCommentViewSet, basename="knowledge-internal-comment")
 
 urlpatterns = router.urls

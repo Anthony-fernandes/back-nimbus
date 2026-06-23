@@ -1,3 +1,4 @@
+from django.db import models
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -8,21 +9,31 @@ from common.viewsets import CompanyScopedModelViewSet
 from .models import (
     ChatConversation,
     ChatMessage,
+    ChatMessageReaction,
+    ContentFlag,
     DoubtsAnswer,
     DoubtsAnswerLike,
     DoubtsQuestion,
+    DoubtsQuestionLike,
+    DoubtsQuestionRating,
     ForumCategory,
+    ForumComment,
     ForumReply,
+    ForumReplyDownvote,
     ForumReplyLike,
     ForumTopic,
+    ForumTopicDownvote,
+    ForumTopicLike,
 )
 from .serializers import (
     ChatConversationSerializer,
     ChatMessageSerializer,
+    ContentFlagSerializer,
     DoubtsAnswerLikeSerializer,
     DoubtsAnswerSerializer,
     DoubtsQuestionSerializer,
     ForumCategorySerializer,
+    ForumCommentSerializer,
     ForumReplyLikeSerializer,
     ForumReplySerializer,
     ForumTopicSerializer,
@@ -100,6 +111,44 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
         from apps.knowledge.serializers import KnowledgeArticleSerializer
         return Response(KnowledgeArticleSerializer(article).data, status=201)
 
+    @action(detail=True, methods=["post"], url_path="toggle-like")
+    def toggle_like(self, request, pk=None):
+        topic = self.get_object()
+        like, created = ForumTopicLike.objects.get_or_create(topic=topic, user=request.user)
+        if created:
+            topic.likes_count += 1
+        else:
+            like.delete()
+            topic.likes_count = max(0, topic.likes_count - 1)
+        topic.save(update_fields=["likes_count", "updated_at"])
+        return Response(self.get_serializer(topic).data)
+
+    @action(detail=True, methods=["post"], url_path="toggle-downvote")
+    def toggle_downvote(self, request, pk=None):
+        topic = self.get_object()
+        dv, created = ForumTopicDownvote.objects.get_or_create(topic=topic, user=request.user)
+        if created:
+            topic.downvotes_count += 1
+        else:
+            dv.delete()
+            topic.downvotes_count = max(0, topic.downvotes_count - 1)
+        topic.save(update_fields=["downvotes_count", "updated_at"])
+        return Response(self.get_serializer(topic).data)
+
+    @action(detail=True, methods=["post"], url_path="pin")
+    def pin(self, request, pk=None):
+        topic = self.get_object()
+        topic.is_pinned = not topic.is_pinned
+        topic.save(update_fields=["is_pinned", "updated_at"])
+        return Response(self.get_serializer(topic).data)
+
+    @action(detail=True, methods=["post"], url_path="lock")
+    def lock(self, request, pk=None):
+        topic = self.get_object()
+        topic.is_locked = not topic.is_locked
+        topic.save(update_fields=["is_locked", "updated_at"])
+        return Response(self.get_serializer(topic).data)
+
 
 class ForumReplyViewSet(CompanyScopedModelViewSet):
     queryset = ForumReply.objects.all()
@@ -134,6 +183,18 @@ class ForumReplyViewSet(CompanyScopedModelViewSet):
             like.delete()
             reply.likes_count = max(0, reply.likes_count - 1)
             reply.save(update_fields=["likes_count", "updated_at"])
+        return Response(self.get_serializer(reply).data)
+
+    @action(detail=True, methods=["post"], url_path="toggle-downvote")
+    def toggle_downvote(self, request, pk=None):
+        reply = self.get_object()
+        dv, created = ForumReplyDownvote.objects.get_or_create(reply=reply, user=request.user)
+        if created:
+            reply.downvotes_count += 1
+        else:
+            dv.delete()
+            reply.downvotes_count = max(0, reply.downvotes_count - 1)
+        reply.save(update_fields=["downvotes_count", "updated_at"])
         return Response(self.get_serializer(reply).data)
 
 
@@ -186,6 +247,18 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
         conversation.save(update_fields=["last_message_at", "updated_at"])
         return Response(ChatMessageSerializer(message, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request, pk=None):
+        conversation = self.get_object()
+        conversation.is_archived = not conversation.is_archived
+        conversation.save(update_fields=["is_archived", "updated_at"])
+        return Response(self.get_serializer(conversation).data)
+
+    @action(detail=True, methods=["post"], url_path="mark-unread")
+    def mark_unread(self, request, pk=None):
+        # Simply return OK — frontend tracks unread state locally
+        return Response({"status": "ok"})
+
 
 class ChatMessageViewSet(CompanyScopedModelViewSet):
     queryset = ChatMessage.objects.all()
@@ -210,6 +283,50 @@ class ChatMessageViewSet(CompanyScopedModelViewSet):
         conversation = message.conversation
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=["last_message_at", "updated_at"])
+
+    def perform_update(self, serializer):
+        serializer.save(is_edited=True)
+
+    @action(detail=True, methods=["post"], url_path="pin")
+    def pin(self, request, pk=None):
+        message = self.get_object()
+        message.is_pinned = not message.is_pinned
+        message.save(update_fields=["is_pinned", "updated_at"])
+        return Response(self.get_serializer(message).data)
+
+    @action(detail=True, methods=["post"], url_path="react")
+    def react(self, request, pk=None):
+        message = self.get_object()
+        emoji = request.data.get("emoji", "")
+        if not emoji:
+            raise ValidationError("'emoji' is required.")
+        reaction, created = ChatMessageReaction.objects.get_or_create(message=message, user=request.user, emoji=emoji)
+        if not created:
+            reaction.delete()
+        return Response(self.get_serializer(message).data)
+
+    @action(detail=True, methods=["post"], url_path="forward")
+    def forward(self, request, pk=None):
+        message = self.get_object()
+        conversation_id = request.data.get("conversation")
+        if not conversation_id:
+            raise ValidationError("'conversation' is required.")
+        try:
+            conversation = ChatConversation.objects.get(id=conversation_id, company=request.user.company, participants=request.user)
+        except ChatConversation.DoesNotExist:
+            raise ValidationError("Conversation not found.")
+        new_message = ChatMessage.objects.create(
+            conversation=conversation,
+            author=request.user,
+            content=message.content,
+            file=message.file,
+            file_name=message.file_name,
+            forward_from=message,
+        )
+        new_message.read_by.add(request.user)
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=["last_message_at", "updated_at"])
+        return Response(self.get_serializer(new_message).data, status=201)
 
 
 class DoubtsQuestionViewSet(CompanyScopedModelViewSet):
@@ -277,6 +394,36 @@ class DoubtsQuestionViewSet(CompanyScopedModelViewSet):
         from apps.knowledge.serializers import KnowledgeArticleSerializer
         return Response(KnowledgeArticleSerializer(article).data, status=201)
 
+    @action(detail=True, methods=["post"], url_path="toggle-like")
+    def toggle_like(self, request, pk=None):
+        question = self.get_object()
+        like, created = DoubtsQuestionLike.objects.get_or_create(question=question, user=request.user)
+        if created:
+            question.likes_count += 1
+        else:
+            like.delete()
+            question.likes_count = max(0, question.likes_count - 1)
+        question.save(update_fields=["likes_count", "updated_at"])
+        return Response(self.get_serializer(question).data)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, pk=None):
+        question = self.get_object()
+        question.status = "CLOSED"
+        question.save(update_fields=["status", "updated_at"])
+        return Response(self.get_serializer(question).data)
+
+    @action(detail=True, methods=["post"], url_path="rate")
+    def rate(self, request, pk=None):
+        question = self.get_object()
+        rating = request.data.get("rating", 5)
+        comment = request.data.get("comment", "")
+        DoubtsQuestionRating.objects.update_or_create(
+            question=question, user=request.user,
+            defaults={"rating": rating, "comment": comment}
+        )
+        return Response({"status": "ok"})
+
 
 class DoubtsAnswerViewSet(CompanyScopedModelViewSet):
     queryset = DoubtsAnswer.objects.all()
@@ -300,6 +447,18 @@ class DoubtsAnswerViewSet(CompanyScopedModelViewSet):
         question.answers_count += 1
         question.save(update_fields=["answers_count", "updated_at"])
 
+    @action(detail=True, methods=["post"], url_path="toggle-like")
+    def toggle_like(self, request, pk=None):
+        answer = self.get_object()
+        like, created = DoubtsAnswerLike.objects.get_or_create(answer=answer, user=request.user)
+        if created:
+            answer.likes_count += 1
+        else:
+            like.delete()
+            answer.likes_count = max(0, answer.likes_count - 1)
+        answer.save(update_fields=["likes_count", "updated_at"])
+        return Response(self.get_serializer(answer).data)
+
 
 class DoubtsAnswerLikeViewSet(CompanyScopedModelViewSet):
     queryset = DoubtsAnswerLike.objects.all()
@@ -318,3 +477,40 @@ class DoubtsAnswerLikeViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+class ForumCommentViewSet(CompanyScopedModelViewSet):
+    queryset = ForumComment.objects.all()
+    serializer_class = ForumCommentSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["topic", "reply", "author"]
+    ordering_fields = "__all__"
+    company_field_name = "topic__company"
+
+    def get_queryset(self):
+        user = self.request.user
+        company = getattr(user, "company", None)
+        if not company:
+            return self.queryset.none()
+        qs = ForumComment.objects.filter(
+            models.Q(topic__company=company) | models.Q(reply__topic__company=company)
+        )
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
+
+
+class ContentFlagViewSet(CompanyScopedModelViewSet):
+    queryset = ContentFlag.objects.all()
+    serializer_class = ContentFlagSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["content_type", "reviewed"]
+    ordering_fields = "__all__"
+    company_field_name = None  # no direct company field
+
+    def get_queryset(self):
+        return ContentFlag.objects.all()
+
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)

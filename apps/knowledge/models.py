@@ -35,6 +35,7 @@ class KnowledgeTag(BaseModel):
 class KnowledgeArticle(BaseModel):
     STATUS_CHOICES = [
         ("DRAFT", "Draft"),
+        ("REVIEW", "Review"),
         ("PUBLISHED", "Published"),
         ("ARCHIVED", "Archived"),
     ]
@@ -59,6 +60,8 @@ class KnowledgeArticle(BaseModel):
     not_helpful_count = models.IntegerField(default=0)
     version = models.IntegerField(default=1)
     published_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    review_at = models.DateTimeField(null=True, blank=True)
     source_ticket = models.ForeignKey(
         "tickets.Ticket",
         on_delete=models.SET_NULL,
@@ -126,3 +129,15 @@ class ArticleRating(BaseModel):
 
     def __str__(self):
         return f"{self.article} - {self.user}"
+
+
+class KnowledgeInternalComment(BaseModel):
+    article = models.ForeignKey(KnowledgeArticle, on_delete=models.CASCADE, related_name="internal_comments")
+    author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="knowledge_internal_comments")
+    content = models.TextField()
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"Internal comment on {self.article}"

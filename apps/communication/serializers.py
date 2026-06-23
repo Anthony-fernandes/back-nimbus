@@ -2,10 +2,15 @@ from rest_framework import serializers
 from .models import (
     ChatConversation,
     ChatMessage,
+    ChatMessageReaction,
+    ContentFlag,
     DoubtsAnswer,
     DoubtsAnswerLike,
     DoubtsQuestion,
+    DoubtsQuestionLike,
+    DoubtsQuestionRating,
     ForumCategory,
+    ForumComment,
     ForumReply,
     ForumReplyLike,
     ForumTopic,
@@ -28,6 +33,7 @@ class ForumReplySerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "author": {"required": False, "read_only": True},
             "likes_count": {"read_only": True},
+            "downvotes_count": {"read_only": True},
             "is_best_answer": {"read_only": True},
         }
 
@@ -45,6 +51,8 @@ class ForumTopicSerializer(serializers.ModelSerializer):
             "views_count": {"read_only": True},
             "replies_count": {"read_only": True},
             "best_answer": {"read_only": True},
+            "likes_count": {"read_only": True},
+            "downvotes_count": {"read_only": True},
         }
 
 
@@ -55,8 +63,27 @@ class ForumReplyLikeSerializer(serializers.ModelSerializer):
         extra_kwargs = {"user": {"required": False, "read_only": True}}
 
 
+class ForumCommentSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
+
+    class Meta:
+        model = ForumComment
+        fields = "__all__"
+        extra_kwargs = {"author": {"required": False, "read_only": True}}
+
+
+class ContentFlagSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContentFlag
+        fields = "__all__"
+        extra_kwargs = {"author": {"required": False, "read_only": True}}
+
+
 class ChatMessageSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
+    reply_to_preview = serializers.SerializerMethodField()
+    reply_to_author = serializers.SerializerMethodField()
+    reactions = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatMessage
@@ -66,8 +93,26 @@ class ChatMessageSerializer(serializers.ModelSerializer):
             "conversation": {"required": False},
         }
 
+    def get_reply_to_preview(self, obj):
+        if obj.reply_to:
+            return (obj.reply_to.content or "")[:60]
+        return None
+
+    def get_reply_to_author(self, obj):
+        if obj.reply_to and obj.reply_to.author:
+            return obj.reply_to.author.full_name_or_username
+        return None
+
+    def get_reactions(self, obj):
+        result = {}
+        for r in obj.reactions_set.all():
+            result.setdefault(r.emoji, []).append(str(r.user_id))
+        return result
+
 
 class ChatConversationSerializer(serializers.ModelSerializer):
+    participant_names = serializers.SerializerMethodField()
+
     class Meta:
         model = ChatConversation
         fields = "__all__"
@@ -76,6 +121,9 @@ class ChatConversationSerializer(serializers.ModelSerializer):
             "created_by": {"required": False, "read_only": True},
             "last_message_at": {"read_only": True},
         }
+
+    def get_participant_names(self, obj):
+        return [u.full_name_or_username for u in obj.participants.all()]
 
 
 class DoubtsAnswerSerializer(serializers.ModelSerializer):
@@ -102,11 +150,33 @@ class DoubtsQuestionSerializer(serializers.ModelSerializer):
             "author": {"required": False, "read_only": True},
             "views_count": {"read_only": True},
             "answers_count": {"read_only": True},
+            "likes_count": {"read_only": True},
         }
 
 
 class DoubtsAnswerLikeSerializer(serializers.ModelSerializer):
     class Meta:
         model = DoubtsAnswerLike
+        fields = "__all__"
+        extra_kwargs = {"user": {"required": False, "read_only": True}}
+
+
+class DoubtsQuestionLikeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DoubtsQuestionLike
+        fields = "__all__"
+        extra_kwargs = {"user": {"required": False, "read_only": True}}
+
+
+class DoubtsQuestionRatingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DoubtsQuestionRating
+        fields = "__all__"
+        extra_kwargs = {"user": {"required": False, "read_only": True}}
+
+
+class ChatMessageReactionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ChatMessageReaction
         fields = "__all__"
         extra_kwargs = {"user": {"required": False, "read_only": True}}
