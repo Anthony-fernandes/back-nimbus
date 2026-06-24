@@ -60,7 +60,33 @@ class SprintActivityPlanSerializer(serializers.ModelSerializer):
         }
 
 
-from apps.sprints.models import SprintRetrospective, SprintReview
+from apps.sprints.models import SprintRetrospective, SprintReview, SprintTicketPlan
+
+
+class SprintTicketPlanSerializer(serializers.ModelSerializer):
+    sprintId = serializers.UUIDField(source="sprint_id", read_only=True)
+    ticketId = serializers.UUIDField(source="ticket_id", read_only=True)
+    responsibleIds = serializers.ListField(source="responsible_ids", child=serializers.CharField(), read_only=True)
+    plannedHours = serializers.DecimalField(source="planned_hours", max_digits=8, decimal_places=2, read_only=True)
+    storyPoints = serializers.IntegerField(source="story_points", read_only=True)
+    createdAt = serializers.DateTimeField(source="created_at", read_only=True)
+    updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
+
+    class Meta:
+        model = SprintTicketPlan
+        fields = [
+            "id", "sprint", "ticket", "responsible_ids", "planned_hours",
+            "story_points", "notes",
+            "sprintId", "ticketId", "responsibleIds", "plannedHours", "storyPoints",
+            "createdAt", "updatedAt",
+        ]
+        extra_kwargs = {
+            "sprint": {"write_only": True},
+            "ticket": {"write_only": True},
+            "responsible_ids": {"write_only": True, "required": False},
+            "planned_hours": {"write_only": True},
+            "story_points": {"write_only": True, "required": False, "allow_null": True},
+        }
 
 
 class SprintRetrospectiveSerializer(serializers.ModelSerializer):

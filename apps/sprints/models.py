@@ -79,3 +79,21 @@ class SprintActivityPlan(BaseModel):
 
     def __str__(self):
         return f"{self.sprint_id} - {self.activity_id}"
+
+
+class SprintTicketPlan(BaseModel):
+    """Planejamento de chamado dentro de uma sprint (responsáveis + horas)."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprint_ticket_plans")
+    sprint = models.ForeignKey(Sprint, on_delete=models.CASCADE, related_name="ticket_plans")
+    ticket = models.ForeignKey("tickets.Ticket", on_delete=models.CASCADE, related_name="sprint_plans")
+    responsible_ids = models.JSONField(default=list, blank=True)
+    planned_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    story_points = models.PositiveIntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["created_at"]
+        unique_together = ("sprint", "ticket")
+
+    def __str__(self):
+        return f"{self.sprint_id} - {self.ticket_id}"

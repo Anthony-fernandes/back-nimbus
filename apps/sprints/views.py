@@ -4,8 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from common.access import get_user_organization_ids, normalize_user_role, user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
-from .models import Sprint, SprintActivityPlan
-from .serializers import SprintSerializer, SprintActivityPlanSerializer
+from .models import Sprint, SprintActivityPlan, SprintTicketPlan
+from .serializers import SprintSerializer, SprintActivityPlanSerializer, SprintTicketPlanSerializer
 
 
 class SprintViewSet(CompanyScopedModelViewSet):
@@ -101,6 +101,52 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
     def perform_destroy(self, instance):
         if not user_has_permission(self.request.user, "sprints.delete"):
             raise PermissionDenied("Seu perfil nao pode excluir planejamentos de sprint.")
+        instance.delete()
+
+
+class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
+    queryset = SprintTicketPlan.objects.all()
+    serializer_class = SprintTicketPlanSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["sprint", "ticket"]
+    search_fields = ["notes"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        user = self.request.user
+        role = normalize_user_role(getattr(user, "role", None))
+
+        if role == "CLIENT":
+            if not user_has_permission(user, "sprints.view"):
+                return queryset.none()
+            return queryset.filter(ticket__client_id__in=get_user_organization_ids(user)).distinct()
+
+        if role == "TECHNICIAN":
+            if user_has_permission(user, "sprints.manage"):
+                return queryset
+            if not user_has_permission(user, "sprints.view"):
+                return queryset.none()
+            return queryset.filter(Q(sprint__lead=user)).distinct()
+
+        if role == "ADMIN":
+            return queryset if user_has_permission(user, "sprints.view") else queryset.none()
+
+        return queryset.none()
+
+    def perform_create(self, serializer):
+        if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
+            raise PermissionDenied("Seu perfil nao pode planejar chamados em sprints.")
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
+            raise PermissionDenied("Seu perfil nao pode alterar planejamentos de chamados.")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if not user_has_permission(self.request.user, "sprints.delete"):
+            raise PermissionDenied("Seu perfil nao pode excluir planejamentos de chamados.")
         instance.delete()
 
 
