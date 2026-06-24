@@ -113,6 +113,7 @@ class SprintTicketPlan(BaseModel):
     story_points = models.PositiveIntegerField(null=True, blank=True)
     priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="Média", blank=True)
     complexity = models.PositiveSmallIntegerField(choices=COMPLEXITY_CHOICES, null=True, blank=True)
+    planned_end_date = models.DateField(null=True, blank=True)
     notes = models.TextField(blank=True, default="")
 
     class Meta:

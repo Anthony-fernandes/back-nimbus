@@ -58,6 +58,7 @@ class SprintTicketPlanSerializer(serializers.ModelSerializer):
     userHours = serializers.DictField(source="user_hours", child=serializers.FloatField(), read_only=True)
     plannedHours = serializers.DecimalField(source="planned_hours", max_digits=8, decimal_places=2, read_only=True)
     storyPoints = serializers.IntegerField(source="story_points", read_only=True)
+    plannedEndDate = serializers.DateField(source="planned_end_date", read_only=True)
     createdAt = serializers.DateTimeField(source="created_at", read_only=True)
     updatedAt = serializers.DateTimeField(source="updated_at", read_only=True)
 
@@ -66,9 +67,9 @@ class SprintTicketPlanSerializer(serializers.ModelSerializer):
         fields = [
             "id", "sprint", "ticket",
             "responsible_ids", "user_hours", "planned_hours", "story_points",
-            "priority", "complexity", "notes",
+            "priority", "complexity", "planned_end_date", "notes",
             "sprintId", "ticketId", "responsibleIds", "userHours", "plannedHours", "storyPoints",
-            "createdAt", "updatedAt",
+            "plannedEndDate", "createdAt", "updatedAt",
         ]
         extra_kwargs = {
             "sprint": {"write_only": True},
@@ -79,6 +80,7 @@ class SprintTicketPlanSerializer(serializers.ModelSerializer):
             "story_points": {"write_only": True, "required": False, "allow_null": True},
             "priority": {"required": False},
             "complexity": {"required": False, "allow_null": True},
+            "planned_end_date": {"write_only": True, "required": False, "allow_null": True},
         }
 
 
