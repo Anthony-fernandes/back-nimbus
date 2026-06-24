@@ -19,6 +19,7 @@ urlpatterns = [
     path("ticket-approvals/", include("apps.tickets.approval_urls")),
     path("sprints/", include("apps.sprints.urls")),
     path("sprint-activity-plans/", include("apps.sprints.plan_urls")),
+    path("sprint-ticket-plans/", include("apps.sprints.ticket_plan_urls")),
     path("activities/", include("apps.activities.urls")),
     path("activity-tags/", include("apps.activities.tag_urls")),
     path("activity-time-entries/", include("apps.activities.time_entry_urls")),

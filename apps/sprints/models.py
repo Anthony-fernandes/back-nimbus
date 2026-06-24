@@ -4,6 +4,24 @@ from apps.companies.models import Company
 from apps.projects.models import Project
 from apps.users.models import User
 
+PRIORITY_CHOICES = [
+    ("Crítica", "Crítica"),
+    ("Alta", "Alta"),
+    ("Média", "Média"),
+    ("Baixa", "Baixa"),
+]
+
+COMPLEXITY_CHOICES = [
+    (1, "1"),
+    (2, "2"),
+    (3, "3"),
+    (5, "5"),
+    (8, "8"),
+    (13, "13"),
+    (21, "21"),
+]
+
+
 class Sprint(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprints")
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="sprints")
@@ -31,7 +49,7 @@ class SprintRetrospective(BaseModel):
     sprint = models.OneToOneField(Sprint, on_delete=models.CASCADE, related_name="retrospective")
     went_well = models.TextField(blank=True, default="")
     to_improve = models.TextField(blank=True, default="")
-    action_items = models.JSONField(default=list, blank=True)  # [{text, owner, done}]
+    action_items = models.JSONField(default=list, blank=True)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_retrospectives")
 
     class Meta:
@@ -66,8 +84,11 @@ class SprintActivityPlan(BaseModel):
     activity = models.ForeignKey("activities.Activity", on_delete=models.CASCADE, related_name="sprint_plans")
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="sprint_activity_plans")
     responsible_ids = models.JSONField(default=list, blank=True)
+    user_hours = models.JSONField(default=dict, blank=True)
     planned_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     story_points = models.PositiveIntegerField(null=True, blank=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="Média", blank=True)
+    complexity = models.PositiveSmallIntegerField(choices=COMPLEXITY_CHOICES, null=True, blank=True)
     planned_start_date = models.DateField(null=True, blank=True)
     planned_end_date = models.DateField(null=True, blank=True)
     order = models.PositiveIntegerField(null=True, blank=True)
@@ -87,8 +108,11 @@ class SprintTicketPlan(BaseModel):
     sprint = models.ForeignKey(Sprint, on_delete=models.CASCADE, related_name="ticket_plans")
     ticket = models.ForeignKey("tickets.Ticket", on_delete=models.CASCADE, related_name="sprint_plans")
     responsible_ids = models.JSONField(default=list, blank=True)
+    user_hours = models.JSONField(default=dict, blank=True)
     planned_hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
     story_points = models.PositiveIntegerField(null=True, blank=True)
+    priority = models.CharField(max_length=20, choices=PRIORITY_CHOICES, default="Média", blank=True)
+    complexity = models.PositiveSmallIntegerField(choices=COMPLEXITY_CHOICES, null=True, blank=True)
     notes = models.TextField(blank=True, default="")
 
     class Meta:
