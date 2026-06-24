@@ -64,10 +64,17 @@ class ReportsView(APIView):
         by_category = list(qs.values("category").annotate(count=Count("id")).order_by("-count")[:10])
         by_technician = list(
             qs.exclude(responsible_technician__isnull=True)
-            .values("responsible_technician__name", "responsible_technician_id")
+            .values("responsible_technician__username", "responsible_technician__first_name", "responsible_technician__last_name", "responsible_technician_id")
             .annotate(count=Count("id"))
             .order_by("-count")[:10]
         )
+        # Normalise technician display name for the frontend key it expects
+        for row in by_technician:
+            fn = row.pop("responsible_technician__first_name", "") or ""
+            ln = row.pop("responsible_technician__last_name", "") or ""
+            un = row.pop("responsible_technician__username", "") or ""
+            row["responsible_technician__name"] = (f"{fn} {ln}".strip()) or un
+
         total = qs.count()
         finished = qs.filter(status__in=["Finalizado", "Cancelado"]).count()
 
