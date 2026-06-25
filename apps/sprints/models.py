@@ -42,6 +42,14 @@ class Sprint(BaseModel):
     def __str__(self):
         return self.name
 
+    @property
+    def total_capacity(self):
+        """Soma da capacidade de todos os participantes. Falls back to self.capacity if no participants."""
+        participants = self.participants.all()
+        if not participants.exists():
+            return self.capacity
+        return sum(p.capacity for p in participants)
+
 
 class SprintRetrospective(BaseModel):
     """Registro da retrospectiva de uma sprint."""
@@ -122,3 +130,25 @@ class SprintTicketPlan(BaseModel):
 
     def __str__(self):
         return f"{self.sprint_id} - {self.ticket_id}"
+
+
+class SprintParticipant(BaseModel):
+    """Participante da sprint com sua capacidade individual."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprint_participants")
+    sprint = models.ForeignKey(Sprint, on_delete=models.CASCADE, related_name="participants")
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sprint_participations")
+    hours_per_day = models.DecimalField(max_digits=4, decimal_places=1, default=8)
+    working_days = models.PositiveIntegerField(default=0)
+    availability_factor = models.DecimalField(max_digits=5, decimal_places=2, default=100)  # percentage 0-100
+
+    class Meta:
+        ordering = ["created_at"]
+        unique_together = ("sprint", "user")
+
+    def __str__(self):
+        return f"{self.sprint_id} - {self.user_id}"
+
+    @property
+    def capacity(self):
+        """Horas disponíveis = hours_per_day * working_days * (availability_factor / 100)"""
+        return float(self.hours_per_day) * int(self.working_days) * (float(self.availability_factor) / 100)

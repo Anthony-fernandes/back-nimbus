@@ -1,10 +1,14 @@
 from rest_framework import serializers
-from .models import Sprint, SprintActivityPlan, SprintRetrospective, SprintReview, SprintTicketPlan
+from .models import Sprint, SprintActivityPlan, SprintParticipant, SprintRetrospective, SprintReview, SprintTicketPlan
 
 
 class SprintSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
     lead_name = serializers.CharField(source="lead.full_name_or_username", read_only=True)
+    total_capacity = serializers.SerializerMethodField(read_only=True)
+
+    def get_total_capacity(self, obj):
+        return obj.total_capacity
 
     class Meta:
         model = Sprint
@@ -101,4 +105,33 @@ class SprintReviewSerializer(serializers.ModelSerializer):
         extra_kwargs = {
             "company": {"required": False, "read_only": True},
             "created_by": {"required": False, "read_only": True},
+        }
+
+
+class SprintParticipantSerializer(serializers.ModelSerializer):
+    sprintId = serializers.UUIDField(source="sprint_id", read_only=True)
+    userId = serializers.UUIDField(source="user_id", read_only=True)
+    hoursPerDay = serializers.DecimalField(source="hours_per_day", max_digits=4, decimal_places=1, read_only=True)
+    workingDays = serializers.IntegerField(source="working_days", read_only=True)
+    availabilityFactor = serializers.DecimalField(source="availability_factor", max_digits=5, decimal_places=2, read_only=True)
+    capacity = serializers.SerializerMethodField(read_only=True)
+    userName = serializers.CharField(source="user.full_name_or_username", read_only=True)
+
+    def get_capacity(self, obj):
+        return obj.capacity
+
+    class Meta:
+        model = SprintParticipant
+        fields = [
+            "id", "sprint", "user",
+            "hours_per_day", "working_days", "availability_factor",
+            "sprintId", "userId", "hoursPerDay", "workingDays", "availabilityFactor",
+            "capacity", "userName", "created_at",
+        ]
+        extra_kwargs = {
+            "sprint": {"write_only": True},
+            "user": {"write_only": True},
+            "hours_per_day": {"write_only": True, "required": False},
+            "working_days": {"write_only": True, "required": False},
+            "availability_factor": {"write_only": True, "required": False},
         }

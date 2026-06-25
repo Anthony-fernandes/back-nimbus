@@ -4,8 +4,8 @@ from rest_framework.permissions import IsAuthenticated
 
 from common.access import get_user_organization_ids, normalize_user_role, user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
-from .models import Sprint, SprintActivityPlan, SprintTicketPlan
-from .serializers import SprintSerializer, SprintActivityPlanSerializer, SprintTicketPlanSerializer
+from .models import Sprint, SprintActivityPlan, SprintParticipant, SprintTicketPlan
+from .serializers import SprintSerializer, SprintActivityPlanSerializer, SprintParticipantSerializer, SprintTicketPlanSerializer
 
 
 class SprintViewSet(CompanyScopedModelViewSet):
@@ -148,6 +148,21 @@ class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
         if not user_has_permission(self.request.user, "sprints.delete"):
             raise PermissionDenied("Seu perfil nao pode excluir planejamentos de chamados.")
         instance.delete()
+
+
+class SprintParticipantViewSet(CompanyScopedModelViewSet):
+    queryset = SprintParticipant.objects.all()
+    serializer_class = SprintParticipantSerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["sprint", "user"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        sprint_id = self.request.query_params.get("sprint")
+        if sprint_id:
+            qs = qs.filter(sprint_id=sprint_id)
+        return qs
 
 
 # ──────────────────────────────────────────────────────────────────────────────
