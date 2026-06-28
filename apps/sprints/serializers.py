@@ -111,6 +111,7 @@ class SprintReviewSerializer(serializers.ModelSerializer):
 class SprintParticipantSerializer(serializers.ModelSerializer):
     sprintId = serializers.UUIDField(source="sprint_id", read_only=True)
     userId = serializers.UUIDField(source="user_id", read_only=True)
+    teamId = serializers.UUIDField(source="team_id", read_only=True)
     hoursPerDay = serializers.DecimalField(source="hours_per_day", max_digits=4, decimal_places=1, read_only=True)
     workingDays = serializers.IntegerField(source="working_days", read_only=True)
     availabilityFactor = serializers.DecimalField(source="availability_factor", max_digits=5, decimal_places=2, read_only=True)
@@ -123,15 +124,25 @@ class SprintParticipantSerializer(serializers.ModelSerializer):
     class Meta:
         model = SprintParticipant
         fields = [
-            "id", "sprint", "user",
+            "id", "sprint", "user", "team",
             "hours_per_day", "working_days", "availability_factor",
-            "sprintId", "userId", "hoursPerDay", "workingDays", "availabilityFactor",
+            "inclusion_mode", "story_points_planned", "story_points_completed",
+            "hours_planned", "hours_executed", "is_available", "notes",
+            "sprintId", "userId", "teamId", "hoursPerDay", "workingDays", "availabilityFactor",
             "capacity", "userName", "created_at",
         ]
         extra_kwargs = {
             "sprint": {"write_only": True},
             "user": {"write_only": True},
+            "team": {"required": False, "allow_null": True},
             "hours_per_day": {"write_only": True, "required": False},
             "working_days": {"write_only": True, "required": False},
             "availability_factor": {"write_only": True, "required": False},
+            "inclusion_mode": {"required": False},
+            "story_points_planned": {"required": False},
+            "story_points_completed": {"required": False},
+            "hours_planned": {"required": False},
+            "hours_executed": {"required": False},
+            "is_available": {"required": False},
+            "notes": {"required": False},
         }

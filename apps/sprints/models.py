@@ -3,6 +3,7 @@ from common.models import BaseModel
 from apps.companies.models import Company
 from apps.projects.models import Project
 from apps.users.models import User
+from apps.teams.models import Team
 
 PRIORITY_CHOICES = [
     ("Crítica", "Crítica"),
@@ -35,6 +36,7 @@ class Sprint(BaseModel):
     story_points = models.PositiveIntegerField(default=0)
     backlog = models.JSONField(default=list, blank=True)
     tasks = models.JSONField(default=list, blank=True)
+    observations = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["-start_at", "-created_at"]
@@ -140,6 +142,17 @@ class SprintParticipant(BaseModel):
     hours_per_day = models.DecimalField(max_digits=4, decimal_places=1, default=8)
     working_days = models.PositiveIntegerField(default=0)
     availability_factor = models.DecimalField(max_digits=5, decimal_places=2, default=100)  # percentage 0-100
+    team = models.ForeignKey(Team, on_delete=models.SET_NULL, null=True, blank=True, related_name="sprint_participants")
+    inclusion_mode = models.CharField(max_length=20, default="manual", choices=[
+        ("team", "Equipe"),
+        ("manual", "Manual"),
+    ])
+    story_points_planned = models.PositiveIntegerField(default=0)
+    story_points_completed = models.PositiveIntegerField(default=0)
+    hours_planned = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    hours_executed = models.DecimalField(max_digits=6, decimal_places=2, default=0)
+    is_available = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
 
     class Meta:
         ordering = ["created_at"]
