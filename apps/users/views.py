@@ -79,10 +79,13 @@ class UserViewSet(CompanyScopedModelViewSet):
     ordering_fields = "__all__"
 
     def _ensure_can_view(self):
-        if user_has_any_permission(self.request.user, ["users.view", "users.manage", "users.managePermissions"]):
+        if user_has_any_permission(self.request.user, [
+            "users.view", "users.manage", "users.managePermissions",
+            "sprints.view", "teams.view", "teams.manage",
+        ]):
             return
 
-        raise PermissionDenied("Seu perfil nao pode consultar usuarios.")
+        raise PermissionDenied("Seu perfil não pode consultar usuários.")
 
     def _ensure_can_manage(self):
         if user_has_permission(self.request.user, "users.manage"):
