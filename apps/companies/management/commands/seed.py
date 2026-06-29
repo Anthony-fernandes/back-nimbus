@@ -309,7 +309,7 @@ class Command(BaseCommand):
                 company=company, title=title,
                 description=random.choice(DESCRIPTIONS),
                 type="Tarefa", status=status,
-                priority=random.choice(["Alta", "Média", "Baixa"]),
+                priority=random.choice(["Alta", "Media", "Baixa"]),
                 assignee=assignee,
                 project=projects[i % len(projects)],
                 start_at=rand_past(30), due_at=rand_future(15),
@@ -357,7 +357,7 @@ class Command(BaseCommand):
             for act in random.sample(activities, min(4, len(activities))):
                 SprintActivityPlan.objects.get_or_create(
                     company=company, sprint=s, activity=act,
-                    defaults={"priority": random.choice(["Alta", "Média", "Baixa"]),
+                    defaults={"priority": random.choice(["Alta", "Media", "Baixa"]),
                               "complexity": random.choice([1, 2, 3, 5]),
                               "story_points": random.choice([1, 2, 3, 5, 8]),
                               "planned_hours": random.choice([4, 8, 13, 21]),
@@ -366,7 +366,7 @@ class Command(BaseCommand):
             for tk in random.sample(tickets, min(3, len(tickets))):
                 SprintTicketPlan.objects.get_or_create(
                     company=company, sprint=s, ticket=tk,
-                    defaults={"priority": random.choice(["Alta", "Média", "Baixa"]),
+                    defaults={"priority": random.choice(["Alta", "Media", "Baixa"]),
                               "complexity": random.choice([1, 2, 3, 5]),
                               "story_points": random.choice([1, 2, 3, 5]),
                               "planned_hours": random.choice([2, 4, 8]),
