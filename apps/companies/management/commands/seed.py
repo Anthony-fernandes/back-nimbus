@@ -61,6 +61,69 @@ LOREM = [
     "Criar relatório de satisfação do cliente (CSAT)",
 ]
 
+# Per-sprint activity titles — each sprint gets its own dedicated activities so
+# the Activity.sprint FK is never overwritten by a later sprint (which would break burndown/velocity).
+SPRINT_ACTIVITIES = [
+    # Sprint 1 — Fundação
+    [
+        "Configurar repositório Git e definir convenções de branch",
+        "Provisionar ambientes de desenvolvimento, staging e produção",
+        "Criar estrutura base do projeto Django com apps principais",
+        "Configurar banco de dados PostgreSQL e primeiras migrations",
+        "Implementar autenticação básica JWT e endpoints de login",
+        "Configurar Docker e docker-compose para desenvolvimento local",
+    ],
+    # Sprint 2 — Autenticação
+    [
+        "Implementar fluxo completo de login com JWT refresh token",
+        "Adicionar autenticação de dois fatores via TOTP (2FA)",
+        "Criar tela de redefinição de senha com link por e-mail",
+        "Implementar controle de permissões granular por usuário",
+        "Criar gerenciamento de sessões e logout em todos dispositivos",
+        "Adicionar rate limiting nos endpoints de autenticação",
+    ],
+    # Sprint 3 — Core Features
+    [
+        "Desenvolver CRUD completo de chamados com filtros avançados",
+        "Implementar motor de SLA com cálculo automático de prazo",
+        "Criar sistema de notificações por e-mail ao mudar status",
+        "Desenvolver módulo de categorias e tipos de chamado",
+        "Implementar atribuição automática de chamados por equipe",
+        "Criar histórico de alterações auditável para chamados",
+    ],
+    # Sprint 4 — Integrações
+    [
+        "Integrar webhook bidirecional com sistema ERP legado",
+        "Implementar sincronização de usuários via LDAP/Active Directory",
+        "Criar endpoint de API pública com autenticação por API key",
+        "Desenvolver integração com Slack para notificações de chamados",
+        "Implementar importação em lote de chamados via CSV",
+        "Criar sistema de webhooks de saída configurável por empresa",
+    ],
+    # Sprint 5 — Performance
+    [
+        "Adicionar índices compostos nas tabelas de maior volume",
+        "Implementar cache Redis para endpoints de listagem",
+        "Otimizar queries N+1 no serializer de chamados",
+        "Configurar paginação eficiente com cursor-based pagination",
+        "Implementar compressão gzip nas respostas da API",
+    ],
+    # Sprint 6 — QA & Polimento
+    [
+        "Escrever testes de integração para todos os endpoints críticos",
+        "Corrigir bugs identificados na fase de beta testing",
+        "Refatorar componentes de UI para melhor acessibilidade",
+        "Implementar logging estruturado e rastreamento de erros",
+    ],
+    # Sprint 7 — Beta Release
+    [
+        "Preparar script de migração de dados para produção",
+        "Realizar teste de carga com K6 e ajustar limites",
+        "Criar documentação Swagger/OpenAPI completa",
+        "Configurar monitoramento com Prometheus e Grafana",
+    ],
+]
+
 DESCRIPTIONS = [
     "Analisar os requisitos técnicos e implementar a solução seguindo as melhores práticas.",
     "Identificar a causa raiz do problema e aplicar a correção adequada com testes de regressão.",
@@ -298,10 +361,9 @@ class Command(BaseCommand):
                                                      defaults={"role": "DESENVOLVEDOR", "active": True})
             projects.append(p)
 
-        # ── Activities ─────────────────────────────────────────────────────────
-        self.stdout.write("Criando atividades...")
+        # ── Activities (standalone, not sprint-bound) ──────────────────────────
+        self.stdout.write("Criando atividades avulsas...")
         act_statuses = ["Backlog", "A fazer", "Em andamento", "Em revisão", "Concluída"]
-        activities = []
         for i, title in enumerate(LOREM):
             assignee = users[i % len(users)]
             status = act_statuses[i % len(act_statuses)]
@@ -316,7 +378,6 @@ class Command(BaseCommand):
                 est_hours=random.choice([2, 4, 8, 13, 21]),
                 story_points=random.choice([1, 2, 3, 5, 8, 13]),
             )
-            activities.append(a)
             ActivityComment.objects.create(
                 company=company, activity=a, author=assignee,
                 body=random.choice(DESCRIPTIONS),
@@ -334,19 +395,20 @@ class Command(BaseCommand):
             ("Sprint 7 — Beta Release", rand_future(29, 30), rand_future(40, 50), "Planejada", "Preparação e lançamento da versão beta."),
         ]
         sprints = []
-        for name, start, end, status, goal in sprint_defs:
+        for sprint_idx, (name, start, end, status, goal) in enumerate(sprint_defs):
             s, _ = Sprint.objects.get_or_create(
                 company=company, name=name,
                 defaults={"start_at": start, "end_at": end, "status": status, "goal": goal},
             )
             sprints.append(s)
-            # availability_factor is stored as integer (80 = 80%); model divides by 100
+
+            # availability_factor is integer (80 = 80%); model divides by 100
             num_participants = random.randint(3, 5)
             sprint_users = random.sample(users, min(num_participants, len(users)))
-            capacity_per_participant = 8 * 10 * 0.8  # = 64h (hours_per_day * working_days * 80%)
+            capacity_per_participant = 8 * 10 * 0.8  # 64h
             total_sprint_capacity = int(len(sprint_users) * capacity_per_participant)
             for u in sprint_users:
-                hours_exec = round(random.uniform(20, 60), 1) if status == "Concluída" else round(random.uniform(0, 30), 1)
+                hours_exec = round(random.uniform(40, 60), 1) if status == "Concluída" else round(random.uniform(0, 30), 1)
                 SprintParticipant.objects.get_or_create(
                     company=company, sprint=s, user=u,
                     defaults={"hours_per_day": 8, "working_days": 10,
@@ -356,45 +418,63 @@ class Command(BaseCommand):
                               "inclusion_mode": "manual"},
                 )
 
-            sprint_acts = random.sample(activities, min(4, len(activities)))
+            # Create dedicated activities for this sprint so Activity.sprint FK is stable
+            act_titles = SPRINT_ACTIVITIES[sprint_idx] if sprint_idx < len(SPRINT_ACTIVITIES) else SPRINT_ACTIVITIES[-1]
             sprint_pts_planned = 0
             sprint_pts_delivered = 0
-            for act in sprint_acts:
-                # set realistic activity status based on sprint phase
-                if status == "Concluída":
-                    act.status = "Concluída" if random.random() < 0.75 else random.choice(["Em revisão", "Em andamento"])
-                elif status == "Em andamento":
-                    act.status = random.choice(["Em andamento", "Em andamento", "A fazer", "Concluída"])
-                else:
-                    act.status = random.choice(["Backlog", "A fazer"])
-                act.sprint = s
-                act.save(update_fields=["status", "sprint"])
-
-                # add time entry linked to this sprint
-                if act.status in ("Em andamento", "Concluída", "Em revisão"):
-                    ActivityTimeEntry.objects.create(
-                        company=company, activity=act, collaborator=act.assignee,
-                        sprint=s,
-                        hours=round(random.uniform(2, float(act.est_hours or 8)), 1),
-                        date=rand_past(1, 20), work_description="Apontamento de horas",
-                    )
+            sprint_acts = []
+            for j, title in enumerate(act_titles):
+                assignee = sprint_users[j % len(sprint_users)]
                 sp = random.choice([1, 2, 3, 5, 8])
+                est_h = random.choice([4, 8, 13, 21])
+
+                # 90% concluded for done sprints; realistic mix for others
+                if status == "Concluída":
+                    act_status = "Concluída" if random.random() < 0.90 else "Em revisão"
+                elif status == "Em andamento":
+                    act_status = random.choice(["Concluída", "Em andamento", "Em andamento", "A fazer"])
+                else:
+                    act_status = random.choice(["Backlog", "A fazer"])
+
+                act = Activity.objects.create(
+                    company=company, title=title,
+                    description=random.choice(DESCRIPTIONS),
+                    type="Tarefa", status=act_status,
+                    priority=random.choice(["Alta", "Media", "Baixa"]),
+                    assignee=assignee,
+                    project=projects[sprint_idx % len(projects)],
+                    start_at=start, due_at=end,
+                    est_hours=est_h,
+                    story_points=sp,
+                    sprint=s,
+                )
+                sprint_acts.append(act)
+
                 SprintActivityPlan.objects.get_or_create(
                     company=company, sprint=s, activity=act,
                     defaults={"priority": random.choice(["Alta", "Media", "Baixa"]),
                               "complexity": random.choice([1, 2, 3, 5]),
                               "story_points": sp,
-                              "planned_hours": random.choice([4, 8, 13, 21]),
+                              "planned_hours": est_h,
                               "user_hours": {}},
                 )
                 sprint_pts_planned += sp
-                if act.status == "Concluída":
+                if act_status == "Concluída":
                     sprint_pts_delivered += sp
 
-            # update Sprint.capacity and Sprint.story_points (direct fields shown in list)
+                # Time entry for active/concluded activities
+                if act_status in ("Em andamento", "Concluída", "Em revisão"):
+                    ActivityTimeEntry.objects.create(
+                        company=company, activity=act, collaborator=assignee,
+                        sprint=s,
+                        hours=round(random.uniform(2, float(est_h)), 1),
+                        date=rand_past(1, 20), work_description="Apontamento de horas",
+                    )
+
             s.capacity = total_sprint_capacity
             s.story_points = sprint_pts_planned
             s.save(update_fields=["capacity", "story_points"])
+
             for tk in random.sample(tickets, min(3, len(tickets))):
                 SprintTicketPlan.objects.get_or_create(
                     company=company, sprint=s, ticket=tk,
@@ -404,9 +484,10 @@ class Command(BaseCommand):
                               "planned_hours": random.choice([2, 4, 8]),
                               "user_hours": {}},
                 )
-            # create SprintReview for concluded sprints so Review and Velocity tabs work
+
+            # SprintReview for concluded sprints (normally created by close_sprint endpoint)
             if status == "Concluída":
-                delivered_count = sum(1 for a in sprint_acts if a.status in ("Concluída", "Concluido", "Done"))
+                delivered_count = sum(1 for a in sprint_acts if a.status == "Concluída")
                 SprintReview.objects.get_or_create(
                     sprint=s, company=company,
                     defaults={
@@ -415,7 +496,7 @@ class Command(BaseCommand):
                         "planned_items": len(sprint_acts),
                         "delivered_items": delivered_count,
                         "incomplete_activity_ids": [],
-                        "notes": "",
+                        "notes": f"Sprint concluída com {delivered_count}/{len(sprint_acts)} atividades entregues.",
                     },
                 )
 
