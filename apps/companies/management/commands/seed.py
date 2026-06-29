@@ -340,35 +340,42 @@ class Command(BaseCommand):
                 defaults={"start_at": start, "end_at": end, "status": status, "goal": goal},
             )
             sprints.append(s)
-            sprint_users = random.sample(users, min(5, len(users)))
+            # availability_factor is stored as integer (80 = 80%); model divides by 100
+            num_participants = random.randint(3, 5)
+            sprint_users = random.sample(users, min(num_participants, len(users)))
+            capacity_per_participant = 8 * 10 * 0.8  # = 64h (hours_per_day * working_days * 80%)
+            total_sprint_capacity = int(len(sprint_users) * capacity_per_participant)
             for u in sprint_users:
-                hours_exec = round(random.uniform(10, 40), 1) if status == "Concluída" else round(random.uniform(0, 20), 1)
+                hours_exec = round(random.uniform(20, 60), 1) if status == "Concluída" else round(random.uniform(0, 30), 1)
                 SprintParticipant.objects.get_or_create(
                     company=company, sprint=s, user=u,
                     defaults={"hours_per_day": 8, "working_days": 10,
-                              "availability_factor": 0.8,
+                              "availability_factor": 80,
                               "hours_planned": 64,
                               "hours_executed": hours_exec,
                               "inclusion_mode": "manual"},
                 )
+
             sprint_acts = random.sample(activities, min(4, len(activities)))
             sprint_pts_planned = 0
             sprint_pts_delivered = 0
             for act in sprint_acts:
-                # for concluded sprints, force most activities to "Concluída"
-                if status == "Concluída" and random.random() < 0.75:
-                    act.status = "Concluída"
-                    act.save(update_fields=["status"])
-                elif status == "Em andamento" and random.random() < 0.4:
-                    act.status = "Em andamento"
-                    act.save(update_fields=["status"])
+                # set realistic activity status based on sprint phase
+                if status == "Concluída":
+                    act.status = "Concluída" if random.random() < 0.75 else random.choice(["Em revisão", "Em andamento"])
+                elif status == "Em andamento":
+                    act.status = random.choice(["Em andamento", "Em andamento", "A fazer", "Concluída"])
+                else:
+                    act.status = random.choice(["Backlog", "A fazer"])
+                act.sprint = s
+                act.save(update_fields=["status", "sprint"])
 
                 # add time entry linked to this sprint
-                if act.status in ("Em andamento", "Concluída"):
+                if act.status in ("Em andamento", "Concluída", "Em revisão"):
                     ActivityTimeEntry.objects.create(
                         company=company, activity=act, collaborator=act.assignee,
                         sprint=s,
-                        hours=round(random.uniform(1, float(act.est_hours or 4)), 1),
+                        hours=round(random.uniform(2, float(act.est_hours or 8)), 1),
                         date=rand_past(1, 20), work_description="Apontamento de horas",
                     )
                 sp = random.choice([1, 2, 3, 5, 8])
@@ -381,11 +388,13 @@ class Command(BaseCommand):
                               "user_hours": {}},
                 )
                 sprint_pts_planned += sp
-                # link activity to sprint via FK so burndown works
-                act.sprint = s
-                act.save(update_fields=["sprint"])
-                if act.status in ("Concluída", "Concluido", "Done"):
+                if act.status == "Concluída":
                     sprint_pts_delivered += sp
+
+            # update Sprint.capacity and Sprint.story_points (direct fields shown in list)
+            s.capacity = total_sprint_capacity
+            s.story_points = sprint_pts_planned
+            s.save(update_fields=["capacity", "story_points"])
             for tk in random.sample(tickets, min(3, len(tickets))):
                 SprintTicketPlan.objects.get_or_create(
                     company=company, sprint=s, ticket=tk,
