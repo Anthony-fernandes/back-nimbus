@@ -17,7 +17,7 @@ from apps.teams.models import Team, TeamMember
 from apps.tickets.models import Ticket, TicketCategory, TicketComment
 from apps.projects.models import Project, ProjectMember
 from apps.activities.models import Activity, ActivityComment, ActivityTimeEntry
-from apps.sprints.models import Sprint, SprintParticipant, SprintActivityPlan, SprintTicketPlan
+from apps.sprints.models import Sprint, SprintParticipant, SprintActivityPlan, SprintTicketPlan, SprintReview
 
 
 def rand_past(days_min=1, days_max=60):
@@ -348,21 +348,34 @@ class Command(BaseCommand):
             sprints.append(s)
             sprint_users = random.sample(users, min(5, len(users)))
             for u in sprint_users:
+                hours_exec = round(random.uniform(10, 40), 1) if status == "Concluída" else round(random.uniform(0, 20), 1)
                 SprintParticipant.objects.get_or_create(
                     company=company, sprint=s, user=u,
                     defaults={"hours_per_day": 8, "working_days": 10,
                               "availability_factor": 0.8,
+                              "hours_planned": 64,
+                              "hours_executed": hours_exec,
                               "inclusion_mode": "manual"},
                 )
-            for act in random.sample(activities, min(4, len(activities))):
+            sprint_acts = random.sample(activities, min(4, len(activities)))
+            sprint_pts_planned = 0
+            sprint_pts_delivered = 0
+            for act in sprint_acts:
+                sp = random.choice([1, 2, 3, 5, 8])
                 SprintActivityPlan.objects.get_or_create(
                     company=company, sprint=s, activity=act,
                     defaults={"priority": random.choice(["Alta", "Media", "Baixa"]),
                               "complexity": random.choice([1, 2, 3, 5]),
-                              "story_points": random.choice([1, 2, 3, 5, 8]),
+                              "story_points": sp,
                               "planned_hours": random.choice([4, 8, 13, 21]),
                               "user_hours": {}},
                 )
+                sprint_pts_planned += sp
+                # link activity to sprint via FK so burndown works
+                act.sprint = s
+                act.save(update_fields=["sprint"])
+                if act.status in ("Concluída", "Concluido", "Done"):
+                    sprint_pts_delivered += sp
             for tk in random.sample(tickets, min(3, len(tickets))):
                 SprintTicketPlan.objects.get_or_create(
                     company=company, sprint=s, ticket=tk,
@@ -371,6 +384,20 @@ class Command(BaseCommand):
                               "story_points": random.choice([1, 2, 3, 5]),
                               "planned_hours": random.choice([2, 4, 8]),
                               "user_hours": {}},
+                )
+            # create SprintReview for concluded sprints so Review and Velocity tabs work
+            if status == "Concluída":
+                delivered_count = sum(1 for a in sprint_acts if a.status in ("Concluída", "Concluido", "Done"))
+                SprintReview.objects.get_or_create(
+                    sprint=s, company=company,
+                    defaults={
+                        "planned_points": sprint_pts_planned,
+                        "delivered_points": sprint_pts_delivered,
+                        "planned_items": len(sprint_acts),
+                        "delivered_items": delivered_count,
+                        "incomplete_activity_ids": [],
+                        "notes": "",
+                    },
                 )
 
         self.stdout.write(self.style.SUCCESS("\n✓ Seed concluído! Resumo:"))
