@@ -317,12 +317,6 @@ class Command(BaseCommand):
                 story_points=random.choice([1, 2, 3, 5, 8, 13]),
             )
             activities.append(a)
-            if status in ("Em andamento", "Concluída"):
-                ActivityTimeEntry.objects.create(
-                    company=company, activity=a, collaborator=assignee,
-                    hours=random.uniform(1, float(a.est_hours)),
-                    date=rand_past(1, 20), work_description="Apontamento de horas",
-                )
             ActivityComment.objects.create(
                 company=company, activity=a, author=assignee,
                 body=random.choice(DESCRIPTIONS),
@@ -361,6 +355,22 @@ class Command(BaseCommand):
             sprint_pts_planned = 0
             sprint_pts_delivered = 0
             for act in sprint_acts:
+                # for concluded sprints, force most activities to "Concluída"
+                if status == "Concluída" and random.random() < 0.75:
+                    act.status = "Concluída"
+                    act.save(update_fields=["status"])
+                elif status == "Em andamento" and random.random() < 0.4:
+                    act.status = "Em andamento"
+                    act.save(update_fields=["status"])
+
+                # add time entry linked to this sprint
+                if act.status in ("Em andamento", "Concluída"):
+                    ActivityTimeEntry.objects.create(
+                        company=company, activity=act, collaborator=act.assignee,
+                        sprint=s,
+                        hours=round(random.uniform(1, float(act.est_hours or 4)), 1),
+                        date=rand_past(1, 20), work_description="Apontamento de horas",
+                    )
                 sp = random.choice([1, 2, 3, 5, 8])
                 SprintActivityPlan.objects.get_or_create(
                     company=company, sprint=s, activity=act,
