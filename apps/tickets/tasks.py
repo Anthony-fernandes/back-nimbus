@@ -74,6 +74,16 @@ def check_sla_task():
                     except Exception as exc:
                         logger.warning("SLA escalation failed for ticket %s: %s", ticket_id, exc)
 
+                # Fire automation rules for on_sla_breach trigger
+                if ticket_id:
+                    try:
+                        from .models import Ticket
+                        from .automation import evaluate_rules
+                        ticket_obj = Ticket.objects.get(id=ticket_id)
+                        evaluate_rules(ticket_obj, "on_sla_breach")
+                    except Exception as exc:
+                        logger.warning("Automation on_sla_breach failed for ticket %s: %s", ticket_id, exc)
+
             for ticket_data in warning:
                 tech_id = ticket_data.get("responsible_technician_id")
                 if not tech_id:
