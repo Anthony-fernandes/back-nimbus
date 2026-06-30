@@ -106,6 +106,10 @@ else:
     superadmin.save(update_fields=["is_staff", "is_superuser"])
     print("   ✓ anthony.dn05@gmail.com já existia (permissões garantidas)")
 
+# Link superadmin to company so dashboard queries return data
+superadmin.company = company
+superadmin.save(update_fields=["company"])
+
 
 # ══════════════════════════════════════════════════════════════
 # 3. DEPARTAMENTOS E CARGOS
