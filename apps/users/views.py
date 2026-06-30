@@ -63,7 +63,9 @@ class PositionViewSet(_OrgStructureViewSet):
 
 
 class UserViewSet(CompanyScopedModelViewSet):
-    queryset = User.objects.all()
+    queryset = User.objects.select_related(
+        "department", "position", "supervisor", "manager", "client", "company"
+    ).prefetch_related("team_memberships__team", "permission_blocks")
     serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
     filterset_fields = ["role", "company", "client", "is_active"]

@@ -36,6 +36,8 @@ class DepartmentSerializer(serializers.ModelSerializer):
 
 
 class PositionSerializer(serializers.ModelSerializer):
+    user_count = serializers.SerializerMethodField()
+
     class Meta:
         model = Position
         fields = [
@@ -44,11 +46,15 @@ class PositionSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "auto_approval",
+            "user_count",
             "active",
             "created_at",
             "updated_at",
         ]
         extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+    def get_user_count(self, obj):
+        return obj.users.count()
 
 
 class UserOrganizationSerializer(serializers.ModelSerializer):
@@ -111,6 +117,7 @@ class UserSerializer(serializers.ModelSerializer):
     position_name = serializers.CharField(source="position.name", read_only=True)
     supervisor_name = serializers.CharField(source="supervisor.full_name_or_username", read_only=True)
     manager_name = serializers.CharField(source="manager.full_name_or_username", read_only=True)
+    teams_data = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -134,7 +141,6 @@ class UserSerializer(serializers.ModelSerializer):
             "total_hours",
             "used_hours",
             "hourly_cost",
-            "technical_group",
             "department",
             "department_name",
             "position",
@@ -143,6 +149,7 @@ class UserSerializer(serializers.ModelSerializer):
             "supervisor_name",
             "manager",
             "manager_name",
+            "teams_data",
             "approval_mode",
             "is_service_desk_approver",
             "permissions_json",
@@ -161,6 +168,12 @@ class UserSerializer(serializers.ModelSerializer):
 
     def get_name(self, obj):
         return obj.full_name_or_username
+
+    def get_teams_data(self, obj):
+        return [
+            {"id": str(tm.team.id), "name": tm.team.name, "color": tm.team.color}
+            for tm in obj.team_memberships.select_related("team").all()
+        ]
 
     def get_resolved_permissions(self, obj):
         return resolve_user_permissions(obj)

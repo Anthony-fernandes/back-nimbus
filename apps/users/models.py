@@ -30,8 +30,6 @@ class User(AbstractUser):
     total_hours = models.PositiveIntegerField(default=40)
     used_hours = models.PositiveIntegerField(default=0)
     hourly_cost = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    technical_group = models.CharField(max_length=120, blank=True, default="")
-
     # Estrutura organizacional corporativa
     department = models.ForeignKey(
         "Department",
