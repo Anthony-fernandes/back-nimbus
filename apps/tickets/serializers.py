@@ -15,6 +15,8 @@ from .models import (
     TicketStatusHistory,
     TicketTemplate,
     TicketWorkflowStatus,
+    TicketAutomationRule,
+    InboundMailbox,
 )
 from .business_hours_models import BusinessHours, CompanyHoliday
 
@@ -445,3 +447,17 @@ class CompanyHolidaySerializer(serializers.ModelSerializer):
         model = CompanyHoliday
         fields = "__all__"
         extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+
+class TicketAutomationRuleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketAutomationRule
+        fields = "__all__"
+        read_only_fields = ["company", "created_at", "updated_at"]
+
+
+class InboundMailboxSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InboundMailbox
+        fields = "__all__"
+        read_only_fields = ["company", "created_at", "webhook_token"]

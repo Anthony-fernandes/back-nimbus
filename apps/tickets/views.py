@@ -1119,3 +1119,47 @@ class CompanyHolidayViewSet(_CSV):
             company=self.request.user.company,
             deleted_at__isnull=True,
         )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# TicketAutomationRule
+# ──────────────────────────────────────────────────────────────────────────────
+from .models import TicketAutomationRule, InboundMailbox
+from .serializers import TicketAutomationRuleSerializer, InboundMailboxSerializer
+import secrets
+from rest_framework.decorators import permission_classes as _pc2
+from rest_framework.permissions import AllowAny
+
+
+class TicketAutomationRuleViewSet(CompanyScopedModelViewSet):
+    serializer_class = TicketAutomationRuleSerializer
+    queryset = TicketAutomationRule.objects.all()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# InboundMailbox
+# ──────────────────────────────────────────────────────────────────────────────
+class InboundMailboxViewSet(CompanyScopedModelViewSet):
+    serializer_class = InboundMailboxSerializer
+    queryset = InboundMailbox.objects.all()
+
+    def perform_create(self, serializer):
+        token = secrets.token_urlsafe(32)
+        serializer.save(company=self.request.user.company, webhook_token=token)
+
+
+@api_view(["POST"])
+@_pc2([AllowAny])
+def inbound_email_webhook(request, token):
+    from .models import InboundMailbox
+    from .inbound_email import process_inbound_email
+    try:
+        mailbox = InboundMailbox.objects.get(webhook_token=token, active=True)
+    except InboundMailbox.DoesNotExist:
+        return Response({"detail": "Invalid token."}, status=404)
+    subject = request.data.get("subject", "")
+    body = request.data.get("body_plain", "") or request.data.get("body", "")
+    html_body = request.data.get("body_html", "")
+    from_email = request.data.get("from_email", "") or request.data.get("sender", "")
+    ticket = process_inbound_email(mailbox.company, subject, body, from_email, html_body)
+    return Response({"ticket_code": ticket.code, "ticket_id": str(ticket.id)}, status=201)

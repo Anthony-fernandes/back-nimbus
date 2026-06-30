@@ -463,3 +463,45 @@ class TicketWorkflowStatus(BaseModel):
         return self.name
 
 from apps.tickets.business_hours_models import BusinessHours, CompanyHoliday  # noqa: F401
+
+
+class TicketAutomationRule(models.Model):
+    TRIGGER_CHOICES = [
+        ("on_create", "Ao criar chamado"),
+        ("on_update", "Ao atualizar chamado"),
+        ("on_status_change", "Ao mudar status"),
+        ("on_sla_breach", "Ao violar SLA"),
+    ]
+    ACTION_CHOICES = [
+        ("set_priority", "Definir prioridade"),
+        ("set_status", "Definir status"),
+        ("assign_technician", "Atribuir técnico"),
+        ("assign_team", "Atribuir equipe"),
+        ("add_tag", "Adicionar tag"),
+        ("send_notification", "Enviar notificação"),
+    ]
+    company = models.ForeignKey("companies.Company", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    trigger = models.CharField(max_length=40, choices=TRIGGER_CHOICES, default="on_create")
+    conditions = models.JSONField(default=list, blank=True)
+    action = models.CharField(max_length=40, choices=ACTION_CHOICES)
+    action_value = models.CharField(max_length=500, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "created_at"]
+
+
+class InboundMailbox(models.Model):
+    company = models.ForeignKey("companies.Company", on_delete=models.CASCADE)
+    name = models.CharField(max_length=200)
+    email_address = models.EmailField(unique=True)
+    webhook_token = models.CharField(max_length=128, unique=True)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]

@@ -19,6 +19,7 @@ def track_status_change(sender, instance, **kwargs):
     except sender.DoesNotExist:
         return
 
+    instance._pre_save_status = old.status
     if old.status != instance.status:
         from apps.tickets.models import TicketStatusHistory
         TicketStatusHistory.objects.create(
@@ -70,3 +71,24 @@ def _send_csat_notification(ticket):
 
 def connect_signals():
     pass  # signals are auto-connected via decorator
+
+
+from django.db.models.signals import post_save
+from django.dispatch import receiver as _post_receiver
+
+
+@_post_receiver(post_save, sender="tickets.Ticket")
+def run_automation_rules(sender, instance, created, **kwargs):
+    """Evaluate automation rules after ticket save."""
+    try:
+        from .automation import evaluate_rules
+        old = getattr(instance, "_pre_save_status", None)
+        if created:
+            evaluate_rules(instance, "on_create")
+        elif old is not None and old != instance.status:
+            evaluate_rules(instance, "on_status_change")
+        else:
+            evaluate_rules(instance, "on_update")
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("Automation evaluation failed: %s", exc)
