@@ -254,7 +254,7 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "NimbusDesk API",
+    "TITLE": "Stratos Suite API",
     "DESCRIPTION": "API REST para gestão de clientes, projetos, chamados, sprints, atividades e dashboard.",
     "VERSION": "1.0.0",
 }
@@ -272,7 +272,7 @@ EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
 EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
 DEFAULT_FROM_EMAIL = env(
     "DEFAULT_FROM_EMAIL",
-    default="NimbusDesk <no-reply@stratos.local>",
+    default="Stratos Suite <no-reply@stratos.local>",
 )
 
 # URL base do frontend para compor links nas notificacoes por e-mail.
@@ -307,4 +307,4 @@ LOGGING = {
     },
 }
 
-MFA_APP_NAME = os.environ.get('MFA_APP_NAME', 'NimbusDesk')
+MFA_APP_NAME = os.environ.get('MFA_APP_NAME', 'Stratos Suite')

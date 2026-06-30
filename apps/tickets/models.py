@@ -201,8 +201,12 @@ class Ticket(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            last = Ticket.objects.count() + 1
-            self.code = f"NIM-{2000 + last}"
+            from django.db import transaction
+            from django.db.models import Max
+            with transaction.atomic():
+                agg = Ticket.objects.aggregate(max_id=Max("id"))
+                seq = (agg["max_id"] or 2000) + 1
+                self.code = f"NIM-{seq}"
         # Auto-calculate priority from impact × urgency if both set
         computed = self.compute_priority_from_matrix()
         if computed:

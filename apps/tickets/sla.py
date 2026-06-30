@@ -1,6 +1,6 @@
 """SLA calculation utilities."""
 import logging
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -31,6 +31,58 @@ def parse_sla_duration(sla_str: str) -> timedelta | None:
     return None
 
 
+def add_business_duration(start_dt, duration, company):
+    """Advance start_dt by `duration` worth of business time."""
+    from apps.tickets.business_hours_models import BusinessHours, CompanyHoliday
+
+    bh_qs = BusinessHours.objects.filter(company=company, active=True)
+    bh_map = {bh.weekday: bh for bh in bh_qs}
+    holidays = set(
+        CompanyHoliday.objects.filter(company=company, active=True).values_list("date", flat=True)
+    )
+
+    if not bh_map:
+        return start_dt + duration
+
+    remaining = duration
+    current = start_dt
+
+    while remaining.total_seconds() > 0:
+        local_date = current.date()
+        weekday = current.weekday()
+
+        # Skip holidays and non-working days
+        if local_date in holidays or weekday not in bh_map:
+            # Jump to start of next day and retry
+            current = datetime.combine(local_date + timedelta(days=1), time.min, tzinfo=current.tzinfo)
+            continue
+
+        bh = bh_map[weekday]
+        day_start = current.replace(hour=bh.start_time.hour, minute=bh.start_time.minute, second=0, microsecond=0)
+        day_end = current.replace(hour=bh.end_time.hour, minute=bh.end_time.minute, second=0, microsecond=0)
+
+        # If we're before start of business, jump to start
+        if current < day_start:
+            current = day_start
+            continue
+
+        # If we're past end of business, jump to next day
+        if current >= day_end:
+            current = datetime.combine(local_date + timedelta(days=1), time.min, tzinfo=current.tzinfo)
+            continue
+
+        # Time available today from current position
+        available_today = day_end - current
+
+        if remaining <= available_today:
+            return current + remaining
+        else:
+            remaining -= available_today
+            current = datetime.combine(local_date + timedelta(days=1), time.min, tzinfo=current.tzinfo)
+
+    return current
+
+
 def compute_sla_due_at(ticket) -> None:
     """Set ticket.sla_due_at based on SLAPolicy or priority defaults."""
     # Try to find a company SLAPolicy for this category+priority
@@ -44,7 +96,7 @@ def compute_sla_due_at(ticket) -> None:
         ).order_by("-priority_weight").first()
         if policy:
             duration = parse_sla_duration(policy.response_time) or timedelta(hours=8)
-            ticket.sla_due_at = timezone.now() + duration
+            ticket.sla_due_at = add_business_duration(timezone.now(), duration, ticket.company)
             return
     except Exception as exc:
         logger.exception("Error computing SLA from policy for ticket %s: %s", getattr(ticket, "id", "?"), exc)
@@ -53,7 +105,7 @@ def compute_sla_due_at(ticket) -> None:
     duration = parse_sla_duration(ticket.sla)
     if not duration:
         duration = SLA_DEFAULTS.get(ticket.priority, timedelta(hours=8))
-    ticket.sla_due_at = timezone.now() + duration
+    ticket.sla_due_at = add_business_duration(timezone.now(), duration, ticket.company)
 
 
 def models_filter(ticket):
