@@ -117,12 +117,24 @@ class ReportsView(APIView):
         ).count()
         sla_met_rate = round(sla_met / sla_total * 100, 1) if sla_total else None
 
+        reopened_count = qs.filter(reopen_count__gt=0).count()
+        reopen_rate = round(reopened_count / total * 100, 1) if total else 0
+        avg_reopens_agg = qs.filter(reopen_count__gt=0).aggregate(avg=Avg("reopen_count"))["avg"]
+        avg_reopens = round(float(avg_reopens_agg), 2) if avg_reopens_agg else 0
+
+        avg_csat_agg = qs.filter(rating__isnull=False).aggregate(avg=Avg("rating"))["avg"]
+        avg_csat = round(float(avg_csat_agg), 2) if avg_csat_agg else None
+
         data = {
             "total": total,
             "finished": finished,
             "open": total - finished,
             "avg_resolution_time_hours": avg_resolution_hours,
             "sla_met_rate": sla_met_rate,
+            "reopen_count": reopened_count,
+            "reopen_rate": reopen_rate,
+            "avg_reopens": avg_reopens,
+            "avg_csat": avg_csat,
             "by_status": by_status,
             "by_priority": by_priority,
             "by_category": by_category,
