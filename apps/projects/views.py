@@ -1,6 +1,10 @@
+import datetime
+
 from django.db.models import Q
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from common.access import (
     get_user_organization_ids,
@@ -62,6 +66,42 @@ class ProjectViewSet(CompanyScopedModelViewSet):
         if not user_has_permission(self.request.user, "projects.delete"):
             raise PermissionDenied("Seu perfil nao pode excluir projetos.")
         instance.delete()
+
+    @action(detail=True, methods=["get"])
+    def health(self, request, pk=None):
+        """Retorna status de saúde do projeto com métricas de atividades."""
+        from apps.activities.models import Activity
+
+        project = self.get_object()
+        today = datetime.date.today()
+
+        activities_qs = Activity.objects.filter(
+            project=project,
+            deleted_at__isnull=True,
+        )
+        total_activities = activities_qs.count()
+        open_activities = activities_qs.exclude(status__in=["Concluido", "Cancelado"]).count()
+        overdue_activities = activities_qs.filter(
+            due_at__lt=today,
+        ).exclude(status__in=["Concluido", "Cancelado"]).count()
+
+        done = total_activities - open_activities
+        completion_pct = round((done / total_activities * 100), 1) if total_activities > 0 else 0
+
+        if project.due_at and project.due_at < today and project.status != "Concluido":
+            status = "delayed"
+        elif overdue_activities > 0:
+            status = "at_risk"
+        else:
+            status = "on_track"
+
+        return Response({
+            "status": status,
+            "open_activities": open_activities,
+            "total_activities": total_activities,
+            "overdue_activities": overdue_activities,
+            "completion_pct": completion_pct,
+        })
 
 
 class ProjectCustomFieldViewSet(CompanyScopedModelViewSet):

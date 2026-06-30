@@ -39,6 +39,12 @@ def track_status_change(sender, instance, **kwargs):
             instance.reopen_deadline = timezone.now() + timezone.timedelta(days=5)
             instance.finished_at = timezone.now()
 
+        # Reabertura controlada: status mudou de Finalizado para qualquer status aberto
+        if old.status == "Finalizado" and instance.status != "Finalizado":
+            from datetime import timedelta
+            instance.reopen_count = (instance.reopen_count or 0) + 1
+            instance.reopen_deadline = timezone.now() + timedelta(days=30)
+
 
 def _send_csat_notification(ticket):
     """Cria notificação inbox pedindo avaliação do chamado."""

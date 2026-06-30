@@ -1,6 +1,8 @@
-from django.db.models import Q
+from django.db.models import Q, Sum
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from common.access import get_user_organization_ids, normalize_user_role, user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
@@ -15,6 +17,44 @@ class SprintViewSet(CompanyScopedModelViewSet):
     filterset_fields = ["company", "project", "status", "lead"]
     search_fields = ["name", "goal", "project__name"]
     ordering_fields = "__all__"
+
+    @action(detail=False, methods=["get"])
+    def velocity(self, request):
+        """Histórico de velocity das últimas N sprints."""
+        from apps.activities.models import Activity
+
+        company = request.user.company
+        n = int(request.query_params.get("n", 10))
+        project_id = request.query_params.get("project")
+
+        qs = Sprint.objects.filter(company=company, deleted_at__isnull=True)
+        if project_id:
+            qs = qs.filter(project_id=project_id)
+        qs = qs.order_by("-start_at")[:n]
+
+        result = []
+        for sprint in reversed(list(qs)):
+            planned = SprintActivityPlan.objects.filter(
+                sprint=sprint,
+                deleted_at__isnull=True,
+            ).aggregate(pts=Sum("story_points"))["pts"] or 0
+
+            delivered = Activity.objects.filter(
+                sprint=sprint,
+                deleted_at__isnull=True,
+                status="Concluido",
+            ).aggregate(pts=Sum("story_points"))["pts"] or 0
+
+            result.append({
+                "sprint_id": str(sprint.id),
+                "sprint_name": sprint.name,
+                "start_at": str(sprint.start_at) if sprint.start_at else None,
+                "end_at": str(sprint.end_at) if sprint.end_at else None,
+                "planned_points": int(planned),
+                "delivered_points": int(delivered),
+            })
+
+        return Response(result)
 
     def get_queryset(self):
         queryset = super().get_queryset()
