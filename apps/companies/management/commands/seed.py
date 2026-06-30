@@ -12,7 +12,7 @@ from django.core.management.base import BaseCommand
 
 from apps.companies.models import Company
 from apps.clients.models import Client
-from apps.users.models import User
+from apps.users.models import Department, Position, User
 from apps.teams.models import Team, TeamMember
 from apps.tickets.models import Ticket, TicketCategory, TicketComment
 from apps.projects.models import Project, ProjectMember
@@ -289,6 +289,64 @@ class Command(BaseCommand):
                 TeamMember.objects.get_or_create(company=company, team=t, user=m,
                                                   defaults={"role": "Membro", "default_capacity": 80})
             teams.append(t)
+
+        # ── Departments & Positions ────────────────────────────────────────────
+        self.stdout.write("Criando departamentos e cargos...")
+        dept_defs = [
+            ("Tecnologia", "Desenvolvimento e infraestrutura de software", users[1]),
+            ("Produto & Design", "Gestão de produto e experiência do usuário", users[6]),
+            ("QA & Qualidade", "Qualidade, testes e processos", users[4]),
+            ("Suporte", "Atendimento e suporte ao cliente", users[9]),
+            ("DevOps & Infra", "Infraestrutura, CI/CD e monitoramento", users[3]),
+        ]
+        departments = []
+        for name, desc, manager in dept_defs:
+            d, _ = Department.objects.get_or_create(
+                company=company, name=name,
+                defaults={"description": desc, "manager": manager, "active": True},
+            )
+            departments.append(d)
+
+        position_defs = [
+            ("Desenvolvedor Sênior", True),
+            ("Tech Lead", True),
+            ("Desenvolvedor Pleno", False),
+            ("Desenvolvedor Júnior", False),
+            ("QA Engineer", False),
+            ("Product Manager", True),
+            ("Scrum Master", False),
+            ("UX Designer", False),
+            ("Analista de Suporte", False),
+            ("DevOps Engineer", True),
+        ]
+        positions = []
+        for name, auto_approval in position_defs:
+            p, _ = Position.objects.get_or_create(
+                company=company, name=name,
+                defaults={"auto_approval": auto_approval, "active": True},
+            )
+            positions.append(p)
+
+        # Assign departments, positions, supervisors to internal users
+        user_org = [
+            (users[0],  departments[0], positions[0], users[1]),   # Ana → Tecnologia, Dev Sênior
+            (users[1],  departments[0], positions[1], None),       # Carlos → Tecnologia, Tech Lead
+            (users[2],  departments[0], positions[2], users[1]),   # Mariana → Tecnologia, Dev Pleno
+            (users[3],  departments[4], positions[9], users[1]),   # Pedro → DevOps, DevOps Engineer
+            (users[4],  departments[2], positions[4], users[1]),   # Júlia → QA, QA Engineer
+            (users[5],  departments[0], positions[3], users[0]),   # Rafael → Tecnologia, Dev Jr
+            (users[6],  departments[1], positions[5], None),       # Camila → Produto, PM
+            (users[7],  departments[0], positions[6], users[6]),   # Lucas → Tecnologia, Scrum Master
+            (users[8],  departments[1], positions[7], users[6]),   # Fernanda → Produto, UX
+            (users[9],  departments[3], positions[8], None),       # Gabriel → Suporte, Analista
+            (users[10], departments[3], positions[8], users[9]),   # Beatriz → Suporte, Analista
+            (users[11], departments[0], positions[0], users[1]),   # Thiago → Tecnologia, Dev Sênior
+        ]
+        for u, dept, pos, supervisor in user_org:
+            u.department = dept
+            u.position = pos
+            u.supervisor = supervisor
+            u.save(update_fields=["department", "position", "supervisor"])
 
         # ── Ticket Categories ──────────────────────────────────────────────────
         self.stdout.write("Criando categorias de chamado...")
