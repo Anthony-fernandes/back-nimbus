@@ -316,7 +316,8 @@ class UserSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         links_data = validated_data.pop("organization_links", None)
         permission_blocks = validated_data.pop("permission_blocks", None)
-        password = validated_data.pop("password", None) or "123456"
+        import secrets as _sec
+        password = validated_data.pop("password", None) or _sec.token_urlsafe(16)
         request_company = self._get_request_company()
         selected_client = validated_data.get("client")
         user = User(**validated_data)

@@ -80,6 +80,8 @@ ALLOWED_HOSTS = env.list(
 if not ALLOWED_HOSTS and not DEBUG:
     raise ImproperlyConfigured("ALLOWED_HOSTS environment variable is required when DEBUG=False.")
 
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
+
 INSTALLED_APPS = [
     "daphne",
     "django.contrib.admin",

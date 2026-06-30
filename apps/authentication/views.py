@@ -68,17 +68,41 @@ class PasswordResetView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        from django.conf import settings as django_settings
+        from django.core.mail import send_mail
+
         email = request.data.get("email")
         if not email:
             return Response({"error": "email is required."}, status=400)
+
+        safe_response = Response({"detail": "Se o e-mail existir, as instruções foram enviadas."})
+
         try:
             user = User.objects.get(email=email)
         except User.DoesNotExist:
-            # Do not reveal whether user exists
-            return Response({"detail": "Se o e-mail existir, as instruções foram enviadas."})
+            return safe_response
+
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
-        return Response({"uid": uid, "token": token})
+        frontend_url = getattr(django_settings, "FRONTEND_URL", "http://localhost:5173")
+        reset_url = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+
+        try:
+            send_mail(
+                subject="Redefinição de senha",
+                message=(
+                    f"Olá {user.first_name or user.email},\n\n"
+                    f"Clique no link abaixo para redefinir sua senha:\n{reset_url}\n\n"
+                    "Se você não solicitou isso, ignore este e-mail."
+                ),
+                from_email=django_settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=True,
+            )
+        except Exception:
+            pass
+
+        return safe_response
 
 
 class PasswordResetConfirmView(APIView):
