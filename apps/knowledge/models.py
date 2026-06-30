@@ -83,6 +83,13 @@ class KnowledgeArticle(BaseModel):
         on_delete=models.SET_NULL,
         related_name="knowledge_articles",
     )
+    client = models.ForeignKey(
+        "clients.Client",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="knowledge_articles",
+    )
 
     class Meta:
         ordering = ["-created_at"]

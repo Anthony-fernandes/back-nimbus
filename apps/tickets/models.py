@@ -67,8 +67,24 @@ class Ticket(BaseModel):
         ("AUTO", "Automatica por cargo"),
     ]
 
+    SOURCE_CHOICES = [
+        ("portal", "Portal"),
+        ("email", "E-mail"),
+        ("chat", "Chat"),
+        ("telefone", "Telefone"),
+        ("api", "API"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="tickets")
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="tickets")
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets")
+    department = models.ForeignKey(
+        "users.Department",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
+    )
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default="portal", blank=True)
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="tickets")
     sprint = models.ForeignKey(
         "sprints.Sprint",
@@ -353,9 +369,16 @@ class TicketCustomValue(BaseModel):
 
 
 class SLAPolicy(BaseModel):
-    """Per-company SLA policy: maps priority+category to a response time."""
+    """Per-company SLA policy: maps priority+category to a response time. Pode ser por cliente."""
     PRIORITY_CHOICES = [("Critica", "Critica"), ("Alta", "Alta"), ("Media", "Media"), ("Baixa", "Baixa"), ("", "Qualquer")]
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sla_policies")
+    client = models.ForeignKey(
+        Client,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sla_policies",
+    )
     name = models.CharField(max_length=200)
     priority = models.CharField(max_length=30, choices=PRIORITY_CHOICES, blank=True, default="")
     category = models.CharField(max_length=80, blank=True, default="")

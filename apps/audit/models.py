@@ -15,6 +15,20 @@ class AuditLog(BaseModel):
         blank=True,
         related_name="audit_logs",
     )
+    client = models.ForeignKey(
+        "clients.Client",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+    )
+    department = models.ForeignKey(
+        "users.Department",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_logs",
+    )
     actor = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

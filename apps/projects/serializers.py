@@ -35,9 +35,10 @@ class ProjectMemberSerializer(serializers.ModelSerializer):
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source="client.name", read_only=True)
-    organization_id = serializers.CharField(source="client_id", read_only=True)
-    organization_name = serializers.CharField(source="client.name", read_only=True)
+    client_name = serializers.CharField(source="client.name", read_only=True, default="")
+    organization_id = serializers.CharField(source="client_id", read_only=True, default="")
+    organization_name = serializers.CharField(source="client.name", read_only=True, default="")
+    department_name = serializers.CharField(source="department.name", read_only=True, default="")
     owner_name = serializers.CharField(source="owner.full_name_or_username", read_only=True)
     leader_name = serializers.CharField(source="owner.full_name_or_username", read_only=True)
     contact_principal_name = serializers.CharField(
@@ -56,6 +57,10 @@ class ProjectSerializer(serializers.ModelSerializer):
             "client_name",
             "organization_id",
             "organization_name",
+            "department",
+            "department_name",
+            "tipo",
+            "metodologia",
             "name",
             "description",
             "status",

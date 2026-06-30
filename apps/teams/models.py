@@ -5,6 +5,11 @@ from apps.companies.models import Company
 
 
 class Team(BaseModel):
+    TIPO_CHOICES = [
+        ("equipe", "Equipe de execução (Sprint/Projeto)"),
+        ("grupo", "Grupo organizacional (Atribuição/Permissão)"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="teams")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, default="")
@@ -18,6 +23,19 @@ class Team(BaseModel):
     icon = models.CharField(max_length=50, blank=True, default="")
     default_capacity = models.DecimalField(max_digits=6, decimal_places=2, default=0)
     settings = models.JSONField(default=dict, blank=True)
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default="equipe")
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="subgroups",
+    )
+    clients = models.ManyToManyField(
+        "clients.Client",
+        blank=True,
+        related_name="assigned_teams",
+    )
 
     class Meta:
         ordering = ["name"]

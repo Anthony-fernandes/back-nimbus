@@ -8,6 +8,13 @@ from common.models import BaseModel
 
 class ForumCategory(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="forum_categories")
+    client = models.ForeignKey(
+        "clients.Client",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="forum_categories",
+    )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     order = models.IntegerField(default=0)
@@ -21,10 +28,17 @@ class ForumCategory(BaseModel):
 
 
 class ForumTopic(BaseModel):
+    VISIBILITY_CHOICES = [
+        ("interna", "Interna (só colaboradores)"),
+        ("publica_cliente", "Pública para clientes vinculados"),
+        ("todos", "Todos"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="forum_topics")
     category = models.ForeignKey(ForumCategory, on_delete=models.CASCADE, related_name="topics")
     title = models.CharField(max_length=255)
     content = models.TextField(blank=True, default="")
+    visibility = models.CharField(max_length=20, choices=VISIBILITY_CHOICES, default="todos")
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="forum_topics")
     is_pinned = models.BooleanField(default=False)
     is_locked = models.BooleanField(default=False)
@@ -163,11 +177,42 @@ class ChatMessageReaction(BaseModel):
 
 
 class ChatConversation(BaseModel):
+    TIPO_CHOICES = [
+        ("direto", "Conversa direta"),
+        ("grupo", "Grupo"),
+        ("chamado", "Vinculado a chamado"),
+        ("projeto", "Vinculado a projeto"),
+        ("entidade", "Canal de entidade/cliente"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="chat_conversations")
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default="direto")
     participants = models.ManyToManyField(User, blank=True, related_name="chat_conversations")
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_conversations")
     last_message_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    name = models.CharField(max_length=255, blank=True, default="")
+    ticket = models.ForeignKey(
+        "tickets.Ticket",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_conversations",
+    )
+    project = models.ForeignKey(
+        "projects.Project",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_conversations",
+    )
+    client = models.ForeignKey(
+        "clients.Client",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="chat_conversations",
+    )
 
     class Meta:
         ordering = ["-last_message_at", "-created_at"]

@@ -56,9 +56,10 @@ class TicketCustomValueSerializer(serializers.ModelSerializer):
 
 
 class TicketSerializer(serializers.ModelSerializer):
-    client_name = serializers.CharField(source="client.name", read_only=True)
-    organization_id = serializers.CharField(source="client_id", read_only=True)
-    organization_name = serializers.CharField(source="client.name", read_only=True)
+    client_name = serializers.CharField(source="client.name", read_only=True, default="")
+    organization_id = serializers.CharField(source="client_id", read_only=True, default="")
+    organization_name = serializers.CharField(source="client.name", read_only=True, default="")
+    department_name = serializers.CharField(source="department.name", read_only=True, default="")
     project_name = serializers.CharField(source="project.name", read_only=True)
     sprint_name = serializers.CharField(source="sprint.name", read_only=True)
     requester_user_name = serializers.CharField(
@@ -93,6 +94,9 @@ class TicketSerializer(serializers.ModelSerializer):
             "client_name",
             "organization_id",
             "organization_name",
+            "department",
+            "department_name",
+            "source",
             "project",
             "project_name",
             "sprint",

@@ -21,8 +21,28 @@ class Project(BaseModel):
         ("delayed", "Atrasado"),
     ]
 
+    TIPO_CHOICES = [
+        ("interno", "Interno"),
+        ("cliente", "Cliente"),
+    ]
+    METODOLOGIA_CHOICES = [
+        ("scrum", "Scrum"),
+        ("kanban", "Kanban"),
+        ("hibrido", "Híbrido"),
+        ("tradicional", "Tradicional"),
+    ]
+
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="projects")
-    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="projects")
+    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, related_name="projects")
+    department = models.ForeignKey(
+        "users.Department",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="projects",
+    )
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES, default="cliente")
+    metodologia = models.CharField(max_length=20, choices=METODOLOGIA_CHOICES, default="scrum")
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True, default="")
     status = models.CharField(max_length=40, choices=STATUS_CHOICES, default="Planejado")
