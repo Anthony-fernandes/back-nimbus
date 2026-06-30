@@ -201,11 +201,14 @@ class Ticket(BaseModel):
 
     def save(self, *args, **kwargs):
         if not self.code:
-            from django.db import transaction
-            from django.db.models import Max
+            from django.db import transaction, connection
             with transaction.atomic():
-                agg = Ticket.objects.aggregate(max_id=Max("id"))
-                seq = (agg["max_id"] or 2000) + 1
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        "SELECT COALESCE(MAX(CAST(REPLACE(code, 'NIM-', '') AS INTEGER)), 1000) FROM tickets_ticket WHERE code LIKE 'NIM-%'"
+                    )
+                    row = cursor.fetchone()
+                seq = (row[0] if row and row[0] else 1000) + 1
                 self.code = f"NIM-{seq}"
         # Auto-calculate priority from impact × urgency if both set
         computed = self.compute_priority_from_matrix()
