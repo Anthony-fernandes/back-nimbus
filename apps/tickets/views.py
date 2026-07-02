@@ -237,6 +237,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         previous = {
             "status": ticket.status,
             "priority": ticket.priority,
+            "category": ticket.category,
             "responsible_technician_id": ticket.responsible_technician_id,
         }
         instance = serializer.instance
@@ -245,7 +246,19 @@ class TicketViewSet(CompanyScopedModelViewSet):
         instance._changed_by_name = getattr(self.request.user, "full_name_or_username", str(self.request.user))
         instance._status_change_reason = self.request.data.get("status_change_reason", "")
         serializer.save()
-        self._post_update(serializer.instance, previous)
+        updated = serializer.instance
+        # Prioridade ou categoria mudaram → o prazo de SLA precisa refletir a nova política
+        if (
+            updated.priority != previous["priority"]
+            or updated.category != previous["category"]
+        ):
+            try:
+                from .sla import compute_sla_due_at
+                compute_sla_due_at(updated)
+                updated.save(update_fields=["sla_due_at", "updated_at"])
+            except Exception as exc:
+                logger.exception("Failed to recompute SLA for ticket %s: %s", updated.id, exc)
+        self._post_update(updated, previous)
 
     def perform_destroy(self, instance):
         self._ensure_can_delete()

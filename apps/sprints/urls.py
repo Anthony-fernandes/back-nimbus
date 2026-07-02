@@ -9,6 +9,7 @@ from .views import (
     SprintViewSet,
     close_sprint,
     sprint_velocity,
+    start_sprint,
 )
 
 router = DefaultRouter()
@@ -20,5 +21,6 @@ router.register("sprint-participants", SprintParticipantViewSet, basename="sprin
 
 urlpatterns = router.urls + [
     path("<uuid:pk>/close/", close_sprint, name="sprint-close"),
+    path("<uuid:pk>/start/", start_sprint, name="sprint-start"),
     path("velocity/", sprint_velocity, name="sprint-velocity"),
 ]

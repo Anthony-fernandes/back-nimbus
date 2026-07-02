@@ -14,6 +14,7 @@ TRIGGER_CHOICES = [
 ACTION_CHOICES = [
     ("set_priority", "Definir prioridade"),
     ("set_status", "Definir status"),
+    ("set_category", "Definir categoria"),
     ("assign_technician", "Atribuir técnico"),
     ("assign_team", "Atribuir equipe"),
     ("add_tag", "Adicionar tag"),
@@ -75,12 +76,27 @@ def _apply_action(rule, ticket, notify, User, Team):
     action = rule.action
     value = rule.action_value or ""
     changed = []
+    recompute_sla = False
     if action == "set_priority" and value:
         ticket.priority = value
         changed.append("priority")
+        recompute_sla = True
     elif action == "set_status" and value:
         ticket.status = value
         changed.append("status")
+    elif action == "set_category" and value:
+        ticket.category = value
+        changed.append("category")
+        recompute_sla = True
+    elif action == "add_tag" and value:
+        tags = list(ticket.tags or [])
+        new_tags = [t.strip() for t in value.split(",") if t.strip()]
+        for tag in new_tags:
+            if tag not in tags:
+                tags.append(tag)
+        if tags != (ticket.tags or []):
+            ticket.tags = tags
+            changed.append("tags")
     elif action == "assign_technician" and value:
         try:
             user = User.objects.get(id=value, company=ticket.company)
@@ -96,9 +112,11 @@ def _apply_action(rule, ticket, notify, User, Team):
         except Team.DoesNotExist:
             pass
     elif action == "send_notification":
-        if ticket.responsible_technician:
+        # Notifica o técnico responsável; sem responsável, notifica quem criou o chamado.
+        recipient = ticket.responsible_technician or getattr(ticket, "created_by", None)
+        if recipient:
             notify(
-                ticket.responsible_technician,
+                recipient,
                 title=f"Automação: {rule.name}",
                 event="ticket.automation",
                 category="Chamados",
@@ -107,5 +125,13 @@ def _apply_action(rule, ticket, notify, User, Team):
                 company=ticket.company,
                 send_email=False,
             )
+    if recompute_sla:
+        try:
+            from .sla import compute_sla_due_at
+            compute_sla_due_at(ticket)
+            if "sla_due_at" not in changed:
+                changed.append("sla_due_at")
+        except Exception as exc:
+            logger.warning("SLA recompute failed for ticket %s: %s", ticket.id, exc)
     if changed:
         ticket.save(update_fields=changed + ["updated_at"])

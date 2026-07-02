@@ -34,13 +34,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         message_type = data.get("type", "message")
 
+        if message_type == "typing":
+            user = self.scope["user"]
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "chat_message",
+                    "message": {
+                        "type": "typing",
+                        "conversation": self.conversation_id,
+                        "author": str(user.id),
+                        "author_name": user.get_full_name() or user.email,
+                    },
+                },
+            )
+            return
+
         if message_type == "message":
             user = self.scope["user"]
             content = data.get("content", "").strip()
-            if not content:
+            if not content or len(content) > 10000:
                 return
+            reply_to = data.get("reply_to") or None
 
-            message, participant_ids = await self.save_message(user, self.conversation_id, content)
+            message, participant_ids = await self.save_message(
+                user, self.conversation_id, content, reply_to
+            )
 
             payload = {
                 "id": str(message.id),
@@ -48,6 +67,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 "content": message.content,
                 "author": str(user.id),
                 "author_name": user.get_full_name() or user.email,
+                "reply_to": str(message.reply_to_id) if message.reply_to_id else None,
                 "created_at": message.created_at.isoformat(),
             }
 
@@ -88,13 +108,17 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return False
 
     @database_sync_to_async
-    def save_message(self, user, conversation_id, content):
+    def save_message(self, user, conversation_id, content, reply_to=None):
         from .models import ChatConversation, ChatMessage
         conv = ChatConversation.objects.get(id=conversation_id)
+        reply_obj = None
+        if reply_to:
+            reply_obj = ChatMessage.objects.filter(id=reply_to, conversation=conv).first()
         msg = ChatMessage.objects.create(
             conversation=conv,
             author=user,
             content=content,
+            reply_to=reply_obj,
         )
         conv.last_message_at = timezone.now()
         conv.save(update_fields=["last_message_at"])

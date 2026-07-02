@@ -249,48 +249,125 @@ class SprintReviewViewSet(CompanyScopedModelViewSet):
         serializer.save(company=self.request.user.company, created_by=self.request.user)
 
 
+DONE_STATUSES = ["Concluída", "Concluido", "Done", "Finalizado"]
+CANCELLED_STATUSES = ["Cancelada", "Cancelado"]
+
+
 @api_view(["POST"])
 @_pc([_IA])
-def close_sprint(request, pk):
-    """Encerra sprint: cria SprintReview e move atividades incompletas para o backlog."""
+def start_sprint(request, pk):
+    """Inicia a sprint (Planejada → Em andamento). Garante uma única sprint ativa por projeto."""
     from apps.sprints.models import Sprint
-    from apps.activities.models import Activity
-    from django.utils import timezone
 
     try:
         sprint = Sprint.objects.get(pk=pk, company=request.user.company)
     except Sprint.DoesNotExist:
         return _R({"detail": "Sprint não encontrada."}, status=404)
 
-    # Find incomplete activities
-    incomplete = Activity.objects.filter(
-        sprint=sprint,
+    if sprint.status == "Em andamento":
+        return _R({"detail": "A sprint já está em andamento."}, status=400)
+    if sprint.status == "Concluída":
+        return _R({"detail": "Não é possível iniciar uma sprint concluída."}, status=400)
+
+    active_qs = Sprint.objects.filter(
+        company=request.user.company,
+        status="Em andamento",
         deleted_at__isnull=True,
-    ).exclude(status__in=["Concluída", "Concluido", "Done", "Cancelada", "Cancelado"])
-
-    incomplete_ids = list(incomplete.values_list("id", flat=True))
-    incomplete_ids_str = [str(i) for i in incomplete_ids]
-
-    planned_pts = sprint.story_points or 0
-    delivered_pts = sum(
-        a.story_points
-        for a in Activity.objects.filter(sprint=sprint, deleted_at__isnull=True).filter(
-            status__in=["Concluída", "Concluido", "Done"]
+    ).exclude(pk=sprint.pk)
+    if sprint.project_id:
+        active_qs = active_qs.filter(project_id=sprint.project_id)
+    conflict = active_qs.first()
+    if conflict and not request.data.get("force"):
+        return _R(
+            {
+                "detail": f"A sprint '{conflict.name}' já está em andamento. Encerre-a antes de iniciar outra, ou envie force=true.",
+                "active_sprint_id": str(conflict.id),
+            },
+            status=409,
         )
+
+    from django.utils import timezone as dj_tz
+
+    sprint.status = "Em andamento"
+    if not sprint.start_at:
+        sprint.start_at = dj_tz.now().date()
+    sprint.save(update_fields=["status", "start_at", "updated_at"])
+    return _R({"detail": "Sprint iniciada.", "status": sprint.status})
+
+
+@api_view(["POST"])
+@_pc([_IA])
+def close_sprint(request, pk):
+    """Encerra sprint: cria SprintReview e devolve itens incompletos (atividades e chamados) ao backlog."""
+    from apps.sprints.models import Sprint, SprintActivityPlan, SprintTicketPlan
+    from apps.activities.models import Activity
+
+    try:
+        sprint = Sprint.objects.get(pk=pk, company=request.user.company)
+    except Sprint.DoesNotExist:
+        return _R({"detail": "Sprint não encontrada."}, status=404)
+
+    if sprint.status == "Concluída":
+        return _R({"detail": "A sprint já está concluída."}, status=400)
+
+    # ── Activities: via plano (wizard) + FK legado ─────────────────
+    planned_activity_ids = set(
+        SprintActivityPlan.objects.filter(sprint=sprint, deleted_at__isnull=True)
+        .values_list("activity_id", flat=True)
     )
+    legacy_activity_ids = set(
+        Activity.objects.filter(sprint=sprint, deleted_at__isnull=True).values_list("id", flat=True)
+    )
+    all_activity_ids = planned_activity_ids | legacy_activity_ids
 
-    # Move incomplete items to backlog (remove from sprint)
-    incomplete.update(sprint=None)
+    activities = Activity.objects.filter(id__in=all_activity_ids, deleted_at__isnull=True)
+    done_activities = activities.filter(status__in=DONE_STATUSES)
+    incomplete_activities = activities.exclude(status__in=DONE_STATUSES + CANCELLED_STATUSES)
 
-    # Create review
+    incomplete_ids_str = [str(i) for i in incomplete_activities.values_list("id", flat=True)]
+
+    # ── Tickets: via plano (wizard) ────────────────────────────────
+    ticket_plans = SprintTicketPlan.objects.filter(
+        sprint=sprint, deleted_at__isnull=True
+    ).select_related("ticket")
+    done_tickets = [p for p in ticket_plans if p.ticket and p.ticket.status in DONE_STATUSES]
+    incomplete_ticket_plans = [
+        p for p in ticket_plans
+        if p.ticket and p.ticket.status not in DONE_STATUSES + CANCELLED_STATUSES
+    ]
+
+    # ── Pontos planejados vs entregues (planos primeiro, fallback FK) ─
+    activity_plans = SprintActivityPlan.objects.filter(sprint=sprint, deleted_at__isnull=True)
+    planned_pts = (
+        sum(p.story_points or 0 for p in activity_plans)
+        + sum(p.story_points or 0 for p in ticket_plans)
+    ) or (sprint.story_points or 0)
+    done_activity_ids = set(done_activities.values_list("id", flat=True))
+    delivered_pts = sum(
+        (p.story_points or 0) for p in activity_plans if p.activity_id in done_activity_ids
+    ) + sum((p.story_points or 0) for p in done_tickets)
+    if delivered_pts == 0 and not activity_plans.exists() and not ticket_plans:
+        delivered_pts = sum(a.story_points or 0 for a in done_activities)
+
+    planned_items = len(all_activity_ids) + len(ticket_plans)
+    delivered_items = done_activities.count() + len(done_tickets)
+
+    # ── Devolver incompletos ao backlog ────────────────────────────
+    incomplete_activities.update(sprint=None, status="Backlog")
+    SprintActivityPlan.objects.filter(
+        sprint=sprint, activity_id__in=[i for i in incomplete_ids_str]
+    ).delete()
+    for plan in incomplete_ticket_plans:
+        plan.delete()
+
     review, _ = SprintReview.objects.get_or_create(
         sprint=sprint,
         company=sprint.company,
         defaults={
             "planned_points": planned_pts,
             "delivered_points": delivered_pts,
-            "planned_items": Activity.objects.filter(sprint=sprint, deleted_at__isnull=True).count() + len(incomplete_ids),
-            "delivered_items": Activity.objects.filter(sprint=sprint, deleted_at__isnull=True).count(),
+            "planned_items": planned_items,
+            "delivered_items": delivered_items,
             "incomplete_activity_ids": incomplete_ids_str,
             "notes": request.data.get("notes", ""),
             "created_by": request.user,
@@ -303,9 +380,11 @@ def close_sprint(request, pk):
     return _R({
         "detail": "Sprint encerrada com sucesso.",
         "review_id": str(review.id),
-        "incomplete_moved": len(incomplete_ids),
+        "incomplete_moved": len(incomplete_ids_str) + len(incomplete_ticket_plans),
         "delivered_points": delivered_pts,
         "planned_points": planned_pts,
+        "delivered_items": delivered_items,
+        "planned_items": planned_items,
     })
 
 
