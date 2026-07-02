@@ -218,7 +218,7 @@ class ReportsView(APIView):
         total_hours = qs.aggregate(h=Count("id"))["h"]
         data = {"total": qs.count(), "by_status": by_status, "by_project": by_project}
 
-        rows = list(qs.values("title", "status", "project__name", "assignee__name", "created_at", "due_date")[:500])
+        rows = list(qs.values("title", "status", "project__name", "assignee__first_name", "assignee__last_name", "created_at", "due_at")[:500])
         if export == "csv":
             return self._csv_response(rows, "relatorio_atividades.csv")
         if export == "excel":
