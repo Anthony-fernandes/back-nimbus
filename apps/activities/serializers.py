@@ -22,6 +22,7 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             "author_display",
             "body",
             "is_internal",
+            "note_type",
             "source",
             "created_at",
             "updated_at",
@@ -30,6 +31,8 @@ class ActivityCommentSerializer(serializers.ModelSerializer):
             "company": {"required": False, "read_only": True},
             "author": {"required": False, "read_only": True},
             "source": {"required": False},
+            "is_internal": {"required": False},
+            "note_type": {"required": False},
         }
 
 

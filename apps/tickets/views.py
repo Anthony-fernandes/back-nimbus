@@ -29,6 +29,7 @@ from .models import (
     TicketCustomField,
     TicketRelation,
     TicketStatusHistory,
+    TicketTimeEntry,
     TicketWorkflowStatus,
 )
 from .business_hours_models import BusinessHours, CompanyHoliday
@@ -43,6 +44,7 @@ from .serializers import (
     TicketRelationSerializer,
     TicketSerializer,
     TicketStatusHistorySerializer,
+    TicketTimeEntrySerializer,
     TicketWorkflowStatusSerializer,
 )
 
@@ -519,6 +521,158 @@ class TicketViewSet(CompanyScopedModelViewSet):
         return Response(data)
 
     @action(detail=True, methods=["post"])
+    def resolve(self, request, pk=None):
+        """Finaliza o chamado com resolução documentada obrigatória."""
+        from django.utils import timezone as dj_tz
+        from .models import TicketComment, TicketStatusHistory
+
+        ticket = self.get_object()
+        self._ensure_can_update(ticket)
+
+        if ticket.status in ("Finalizado", "Cancelado"):
+            return Response({"detail": "Este chamado já está finalizado."}, status=400)
+
+        resolution_type = (request.data.get("resolution_type") or "").strip()
+        resolution_notes = (request.data.get("resolution_notes") or "").strip()
+        if not resolution_type:
+            return Response({"detail": "Informe o tipo de conclusão."}, status=400)
+        if not resolution_notes:
+            return Response({"detail": "Descreva a resolução aplicada antes de finalizar."}, status=400)
+
+        # Subtarefas obrigatórias pendentes bloqueiam a finalização
+        pending_required = [
+            item.get("text") for item in (ticket.checklist or [])
+            if item.get("required") and not item.get("done")
+        ]
+        if pending_required:
+            return Response(
+                {"detail": f"Subtarefas obrigatórias pendentes: {', '.join(pending_required[:5])}"},
+                status=400,
+            )
+
+        final_status = "Cancelado" if resolution_type == "Cancelado" else "Finalizado"
+        previous_status = ticket.status
+
+        ticket.resolution_type = resolution_type
+        ticket.resolution_notes = resolution_notes
+        ticket.resolved_by = request.user
+        ticket.resolved_at = dj_tz.now()
+        ticket.status = final_status
+        ticket.finished_at = ticket.finished_at or dj_tz.now()
+        ticket._changed_by = request.user
+        ticket._changed_by_name = getattr(request.user, "full_name_or_username", str(request.user))
+        ticket._status_change_reason = f"Resolução: {resolution_type}"
+        ticket.save(update_fields=[
+            "resolution_type", "resolution_notes", "resolved_by", "resolved_at",
+            "status", "finished_at", "updated_at",
+        ])
+
+        TicketStatusHistory.objects.create(
+            company=ticket.company,
+            ticket=ticket,
+            changed_by=request.user,
+            changed_by_name=getattr(request.user, "full_name_or_username", ""),
+            status_from=previous_status,
+            status_to=final_status,
+            reason=f"[{resolution_type}] {resolution_notes[:400]}",
+        )
+        TicketComment.objects.create(
+            company=ticket.company,
+            ticket=ticket,
+            author=request.user,
+            author_name=getattr(request.user, "full_name_or_username", ""),
+            body=f"**{resolution_type}** — {resolution_notes}",
+            note_type="resolution",
+        )
+        message_to_requester = (request.data.get("message_to_requester") or "").strip()
+        if request.data.get("send_to_requester") and message_to_requester:
+            TicketComment.objects.create(
+                company=ticket.company,
+                ticket=ticket,
+                author=request.user,
+                author_name=getattr(request.user, "full_name_or_username", ""),
+                body=message_to_requester,
+                note_type="public",
+            )
+            if ticket.requester_user:
+                notify(
+                    ticket.requester_user,
+                    title=f"Chamado {ticket.code} finalizado",
+                    message=message_to_requester,
+                    event="ticket.resolved",
+                    company=ticket.company,
+                    link=_ticket_link(ticket),
+                    entity=ticket,
+                    origin="tickets",
+                )
+
+        record_audit(
+            action="ticket.resolved",
+            actor=request.user,
+            instance=ticket,
+            request=request,
+            description=f"Chamado finalizado como '{resolution_type}'.",
+            origin="tickets",
+            metadata={"resolution_type": resolution_type},
+        )
+        return Response(self.get_serializer(ticket).data)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """Reabre um chamado finalizado — motivo obrigatório."""
+        from django.utils import timezone as dj_tz
+        from .models import TicketComment, TicketStatusHistory
+
+        ticket = self.get_object()
+        self._ensure_can_update(ticket)
+
+        if ticket.status not in ("Finalizado", "Cancelado", "Resolvido"):
+            return Response({"detail": "Apenas chamados finalizados podem ser reabertos."}, status=400)
+
+        reason = (request.data.get("reason") or "").strip()
+        if not reason:
+            return Response({"detail": "Informe o motivo da reabertura."}, status=400)
+
+        previous_status = ticket.status
+        ticket.status = "Em atendimento"
+        ticket.reopen_count = (ticket.reopen_count or 0) + 1
+        ticket.last_reopened_at = dj_tz.now()
+        ticket.finished_at = None
+        ticket._changed_by = request.user
+        ticket._changed_by_name = getattr(request.user, "full_name_or_username", str(request.user))
+        ticket._status_change_reason = f"Reaberto: {reason}"
+        ticket.save(update_fields=[
+            "status", "reopen_count", "last_reopened_at", "finished_at", "updated_at",
+        ])
+
+        TicketStatusHistory.objects.create(
+            company=ticket.company,
+            ticket=ticket,
+            changed_by=request.user,
+            changed_by_name=getattr(request.user, "full_name_or_username", ""),
+            status_from=previous_status,
+            status_to="Em atendimento",
+            reason=f"Reaberto: {reason}",
+        )
+        TicketComment.objects.create(
+            company=ticket.company,
+            ticket=ticket,
+            author=request.user,
+            author_name=getattr(request.user, "full_name_or_username", ""),
+            body=f"Chamado reaberto. Motivo: {reason}",
+            note_type="internal",
+        )
+        record_audit(
+            action="ticket.reopened",
+            actor=request.user,
+            instance=ticket,
+            request=request,
+            description=f"Chamado reaberto: {reason}",
+            origin="tickets",
+        )
+        return Response(self.get_serializer(ticket).data)
+
+    @action(detail=True, methods=["post"])
     def rate(self, request, pk=None):
         ticket = self.get_object()
         # Only the requester (client) can rate
@@ -803,10 +957,14 @@ class TicketCommentViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
-        is_internal = bool(serializer.validated_data.get("is_internal"))
-        if is_internal and not user_has_any_permission(user, ["tickets.commentInternal", "tickets.edit"]):
+        note_type = serializer.validated_data.get("note_type") or (
+            "internal" if serializer.validated_data.get("is_internal") else "public"
+        )
+        if note_type in ("internal", "technical", "resolution") and not user_has_any_permission(
+            user, ["tickets.commentInternal", "tickets.edit"]
+        ):
             raise PermissionDenied("Seu perfil nao pode adicionar comentarios internos.")
-        if not is_internal and not user_has_any_permission(
+        if note_type == "public" and not user_has_any_permission(
             user, ["tickets.commentPublic", "tickets.commentOwn", "tickets.edit"]
         ):
             raise PermissionDenied("Seu perfil nao pode comentar chamados.")
@@ -850,6 +1008,38 @@ class TicketCommentViewSet(CompanyScopedModelViewSet):
         if not user_has_any_permission(self.request.user, ["tickets.edit"]):
             raise PermissionDenied("Seu perfil nao pode excluir comentarios.")
         instance.delete()
+
+
+class TicketTimeEntryViewSet(CompanyScopedModelViewSet):
+    queryset = TicketTimeEntry.objects.all()
+    serializer_class = TicketTimeEntrySerializer
+    permission_classes = [IsAuthenticated]
+    filterset_fields = ["ticket", "collaborator", "date"]
+    ordering_fields = "__all__"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        role = normalize_user_role(getattr(self.request.user, "role", None))
+        if role == "CLIENT":
+            return queryset.none()
+        return queryset
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        collaborator = serializer.validated_data.get("collaborator") or user
+        entry = serializer.save(
+            company=user.company,
+            collaborator=collaborator,
+            collaborator_name=getattr(collaborator, "full_name_or_username", ""),
+        )
+        record_audit(
+            action="ticket.time_logged",
+            actor=user,
+            instance=entry.ticket,
+            request=self.request,
+            description=f"{entry.collaborator_name} apontou {entry.hours}h no chamado.",
+            origin="tickets",
+        )
 
 
 class TicketAttachmentViewSet(CompanyScopedModelViewSet):

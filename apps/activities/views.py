@@ -1,6 +1,8 @@
 from django.db.models import Q
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
 from common.access import normalize_user_role, user_has_any_permission, user_has_permission
 from common.viewsets import CompanyScopedModelViewSet
@@ -67,6 +69,112 @@ class ActivityViewSet(CompanyScopedModelViewSet):
         if not user_has_permission(self.request.user, "activities.delete"):
             raise PermissionDenied("Seu perfil nao pode excluir atividades.")
         instance.delete()
+
+    @action(detail=True, methods=["post"])
+    def resolve(self, request, pk=None):
+        """Finaliza a atividade com resolução documentada obrigatória."""
+        from django.utils import timezone as dj_tz
+        from common.audit import record_audit
+
+        activity = self.get_object()
+        if not user_has_any_permission(request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode finalizar atividades.")
+
+        if activity.status in ("Concluída", "Concluido", "Concluído", "Cancelada", "Cancelado"):
+            return Response({"detail": "Esta atividade já está finalizada."}, status=400)
+
+        resolution_type = (request.data.get("resolution_type") or "").strip()
+        resolution_notes = (request.data.get("resolution_notes") or "").strip()
+        if not resolution_type:
+            return Response({"detail": "Informe o tipo de conclusão."}, status=400)
+        if not resolution_notes:
+            return Response({"detail": "Descreva a resolução aplicada antes de finalizar."}, status=400)
+
+        pending_required = [
+            item.get("text") for item in (activity.checklist or [])
+            if item.get("required") and not item.get("done")
+        ]
+        if pending_required:
+            return Response(
+                {"detail": f"Subtarefas obrigatórias pendentes: {', '.join(pending_required[:5])}"},
+                status=400,
+            )
+
+        final_status = "Cancelado" if resolution_type == "Cancelado" else "Concluída"
+        previous_status = activity.status
+
+        activity.resolution_type = resolution_type
+        activity.resolution_notes = resolution_notes
+        activity.resolved_by = request.user
+        activity.resolved_at = dj_tz.now()
+        activity.status = final_status
+        activity.save(update_fields=[
+            "resolution_type", "resolution_notes", "resolved_by", "resolved_at",
+            "status", "updated_at",
+        ])
+
+        ActivityComment.objects.create(
+            company=activity.company,
+            activity=activity,
+            author=request.user,
+            author_name=getattr(request.user, "full_name_or_username", ""),
+            body=f"**{resolution_type}** — {resolution_notes}",
+            note_type="resolution",
+        )
+        record_audit(
+            action="activity.resolved",
+            actor=request.user,
+            instance=activity,
+            request=request,
+            description=f"Atividade finalizada como '{resolution_type}' (era '{previous_status}').",
+            origin="activities",
+            metadata={"resolution_type": resolution_type},
+        )
+        return Response(self.get_serializer(activity).data)
+
+    @action(detail=True, methods=["post"])
+    def reopen(self, request, pk=None):
+        """Reabre uma atividade finalizada — motivo obrigatório."""
+        from django.utils import timezone as dj_tz
+        from common.audit import record_audit
+
+        activity = self.get_object()
+        if not user_has_any_permission(request.user, ["activities.edit", "activities.manage"]):
+            raise PermissionDenied("Seu perfil nao pode reabrir atividades.")
+
+        if activity.status not in ("Concluída", "Concluido", "Concluído", "Cancelada", "Cancelado"):
+            return Response({"detail": "Apenas atividades finalizadas podem ser reabertas."}, status=400)
+
+        reason = (request.data.get("reason") or "").strip()
+        if not reason:
+            return Response({"detail": "Informe o motivo da reabertura."}, status=400)
+
+        previous_status = activity.status
+        activity.status = "Em progresso"
+        activity.reopen_count = (activity.reopen_count or 0) + 1
+        activity.last_reopened_at = dj_tz.now()
+        activity.status_reason = f"Reaberto: {reason}"[:255]
+        activity.save(update_fields=[
+            "status", "reopen_count", "last_reopened_at", "status_reason", "updated_at",
+        ])
+
+        ActivityComment.objects.create(
+            company=activity.company,
+            activity=activity,
+            author=request.user,
+            author_name=getattr(request.user, "full_name_or_username", ""),
+            body=f"Atividade reaberta. Motivo: {reason}",
+            note_type="internal",
+        )
+        record_audit(
+            action="activity.reopened",
+            actor=request.user,
+            instance=activity,
+            request=request,
+            description=f"Atividade reaberta (era '{previous_status}'): {reason}",
+            origin="activities",
+        )
+        return Response(self.get_serializer(activity).data)
 
 
 class ActivityTagViewSet(CompanyScopedModelViewSet):

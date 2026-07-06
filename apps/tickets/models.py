@@ -180,6 +180,22 @@ class Ticket(BaseModel):
     last_reopened_at = models.DateTimeField(null=True, blank=True)
     reopen_deadline = models.DateTimeField(null=True, blank=True)  # prazo limite para reabrir
 
+    # Resolução documentada (fluxo WorkItem)
+    RESOLUTION_TYPES = [
+        ("Resolvido", "Resolvido"),
+        ("Resolvido parcialmente", "Resolvido parcialmente"),
+        ("Não reproduzido", "Não reproduzido"),
+        ("Duplicado", "Duplicado"),
+        ("Encaminhado", "Encaminhado"),
+        ("Cancelado", "Cancelado"),
+    ]
+    resolution_type = models.CharField(max_length=60, blank=True, default="")
+    resolution_notes = models.TextField(blank=True, default="")
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="resolved_tickets"
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -266,12 +282,45 @@ class TicketComment(BaseModel):
     author_name = models.CharField(max_length=255, blank=True, default="")
     body = models.TextField(blank=True, default="")
     is_internal = models.BooleanField(default=False)
+    # public: cliente vê | internal: só equipe | technical: só técnicos/gestores | resolution: registro de finalização
+    NOTE_TYPES = [
+        ("public", "Resposta pública"),
+        ("internal", "Comentário interno"),
+        ("technical", "Nota técnica"),
+        ("resolution", "Resolução"),
+    ]
+    note_type = models.CharField(max_length=20, choices=NOTE_TYPES, blank=True, default="")
 
     class Meta:
         ordering = ["created_at"]
 
+    def save(self, *args, **kwargs):
+        if not self.note_type:
+            self.note_type = "internal" if self.is_internal else "public"
+        self.is_internal = self.note_type != "public"
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.ticket_id} - {self.author_name}"
+
+
+class TicketTimeEntry(BaseModel):
+    """Apontamento de horas por técnico em um chamado (espelha ActivityTimeEntry)."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_time_entries")
+    ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="time_entries")
+    collaborator = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="ticket_time_entries"
+    )
+    collaborator_name = models.CharField(max_length=255, blank=True, default="")
+    date = models.DateField()
+    hours = models.DecimalField(max_digits=8, decimal_places=2, default=0)
+    work_description = models.TextField(blank=True, default="")
+
+    class Meta:
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.ticket_id} - {self.date}"
 
 
 class TicketAttachment(BaseModel):

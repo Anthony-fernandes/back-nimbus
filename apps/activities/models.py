@@ -26,6 +26,25 @@ class Activity(BaseModel):
     tags = models.JSONField(default=list, blank=True)
     checklist = models.JSONField(default=list, blank=True)
 
+    # Fluxo WorkItem: resolução documentada + reabertura controlada
+    RESOLUTION_TYPES = [
+        ("Concluído", "Concluído"),
+        ("Entregue parcialmente", "Entregue parcialmente"),
+        ("Movido para outra sprint", "Movido para outra sprint"),
+        ("Não necessário", "Não necessário"),
+        ("Bloqueado", "Bloqueado"),
+        ("Cancelado", "Cancelado"),
+    ]
+    resolution_type = models.CharField(max_length=60, blank=True, default="")
+    resolution_notes = models.TextField(blank=True, default="")
+    resolved_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="resolved_activities"
+    )
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    reopen_count = models.PositiveIntegerField(default=0)
+    last_reopened_at = models.DateTimeField(null=True, blank=True)
+    status_reason = models.CharField(max_length=255, blank=True, default="")
+
     class Meta:
         ordering = ["-created_at"]
 
@@ -83,9 +102,22 @@ class ActivityComment(BaseModel):
     body = models.TextField(blank=True, default="")
     is_internal = models.BooleanField(default=False)
     source = models.CharField(max_length=80, blank=True, default="")
+    NOTE_TYPES = [
+        ("public", "Resposta pública"),
+        ("internal", "Comentário interno"),
+        ("technical", "Nota técnica"),
+        ("resolution", "Resolução"),
+    ]
+    note_type = models.CharField(max_length=20, choices=NOTE_TYPES, blank=True, default="")
 
     class Meta:
         ordering = ["created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.note_type:
+            self.note_type = "internal" if self.is_internal else "public"
+        self.is_internal = self.note_type != "public"
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.activity_id} - {self.author_name}"

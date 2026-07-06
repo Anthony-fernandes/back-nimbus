@@ -15,6 +15,7 @@ urlpatterns = [
     path("ticket-categories/", include("apps.tickets.category_urls")),
     path("ticket-workflow-statuses/", include("apps.tickets.workflow_status_urls")),
     path("ticket-comments/", include("apps.tickets.comment_urls")),
+    path("ticket-time-entries/", include("apps.tickets.time_entry_urls")),
     path("ticket-attachments/", include("apps.tickets.attachment_urls")),
     path("ticket-approvals/", include("apps.tickets.approval_urls")),
     path("sprints/", include("apps.sprints.urls")),

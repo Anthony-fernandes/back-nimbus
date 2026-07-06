@@ -14,6 +14,7 @@ from .models import (
     TicketRelation,
     TicketStatusHistory,
     TicketTemplate,
+    TicketTimeEntry,
     TicketWorkflowStatus,
     TicketAutomationRule,
     InboundMailbox,
@@ -58,6 +59,7 @@ class TicketCustomValueSerializer(serializers.ModelSerializer):
 
 
 class TicketSerializer(serializers.ModelSerializer):
+    resolved_by_name = serializers.CharField(source="resolved_by.full_name_or_username", read_only=True, default="")
     client_name = serializers.CharField(source="client.name", read_only=True, default="")
     organization_id = serializers.CharField(source="client_id", read_only=True, default="")
     organization_name = serializers.CharField(source="client.name", read_only=True, default="")
@@ -147,12 +149,25 @@ class TicketSerializer(serializers.ModelSerializer):
             "rating",
             "rating_comment",
             "rated_at",
+            "reopen_count",
+            "last_reopened_at",
+            "resolution_type",
+            "resolution_notes",
+            "resolved_by",
+            "resolved_by_name",
+            "resolved_at",
             "custom_values",
             "created_at",
             "updated_at",
         ]
         extra_kwargs = {
             "company": {"required": False, "read_only": True},
+            "reopen_count": {"read_only": True},
+            "last_reopened_at": {"read_only": True},
+            "resolution_type": {"read_only": True},
+            "resolution_notes": {"read_only": True},
+            "resolved_by": {"read_only": True},
+            "resolved_at": {"read_only": True},
             "approval_status": {"read_only": True},
             "approval_route": {"read_only": True},
             "approval_reason": {"read_only": True},
@@ -358,6 +373,7 @@ class TicketCommentSerializer(serializers.ModelSerializer):
             "author_display",
             "body",
             "is_internal",
+            "note_type",
             "created_at",
             "updated_at",
         ]
@@ -365,6 +381,32 @@ class TicketCommentSerializer(serializers.ModelSerializer):
             "company": {"required": False, "read_only": True},
             "author": {"required": False, "read_only": True},
             "author_name": {"required": False},
+            "is_internal": {"required": False},
+            "note_type": {"required": False},
+        }
+
+
+class TicketTimeEntrySerializer(serializers.ModelSerializer):
+    collaborator_display = serializers.CharField(source="collaborator.full_name_or_username", read_only=True)
+
+    class Meta:
+        model = TicketTimeEntry
+        fields = [
+            "id",
+            "company",
+            "ticket",
+            "collaborator",
+            "collaborator_name",
+            "collaborator_display",
+            "date",
+            "hours",
+            "work_description",
+            "created_at",
+        ]
+        extra_kwargs = {
+            "company": {"required": False, "read_only": True},
+            "collaborator": {"required": False},
+            "collaborator_name": {"required": False},
         }
 
 
