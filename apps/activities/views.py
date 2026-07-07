@@ -82,6 +82,8 @@ class ActivityViewSet(CompanyScopedModelViewSet):
 
         if activity.status in ("Concluída", "Concluido", "Concluído", "Cancelada", "Cancelado"):
             return Response({"detail": "Esta atividade já está finalizada."}, status=400)
+        if activity.status in ("Backlog", "A fazer"):
+            return Response({"detail": "Inicie o atendimento antes de finalizar a atividade."}, status=400)
 
         resolution_type = (request.data.get("resolution_type") or "").strip()
         resolution_notes = (request.data.get("resolution_notes") or "").strip()
@@ -237,6 +239,9 @@ class ActivityTimeEntryViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         if not user_has_permission(self.request.user, "activities.trackTime"):
             raise PermissionDenied("Seu perfil nao pode apontar horas.")
+        activity = serializer.validated_data.get("activity")
+        if activity and activity.status in ("Backlog", "A fazer"):
+            raise PermissionDenied("Inicie o atendimento antes de apontar horas nesta atividade.")
         super().perform_create(serializer)
 
     def perform_update(self, serializer):

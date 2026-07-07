@@ -531,6 +531,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         if ticket.status in ("Finalizado", "Cancelado"):
             return Response({"detail": "Este chamado já está finalizado."}, status=400)
+        if ticket.status in ("Aberto", "Triagem", "Aguardando Aprovacao", "Backlog", "Aguardando atendimento"):
+            return Response({"detail": "Inicie o atendimento antes de finalizar o chamado."}, status=400)
 
         resolution_type = (request.data.get("resolution_type") or "").strip()
         resolution_notes = (request.data.get("resolution_notes") or "").strip()
@@ -1026,6 +1028,9 @@ class TicketTimeEntryViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         user = self.request.user
+        ticket = serializer.validated_data.get("ticket")
+        if ticket and ticket.status in ("Aberto", "Triagem", "Aguardando Aprovacao", "Backlog", "Aguardando atendimento"):
+            raise PermissionDenied("Inicie o atendimento antes de apontar horas neste chamado.")
         collaborator = serializer.validated_data.get("collaborator") or user
         entry = serializer.save(
             company=user.company,
