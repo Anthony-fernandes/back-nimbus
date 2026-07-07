@@ -468,6 +468,10 @@ class TicketRelationSerializer(serializers.ModelSerializer):
     related_ticket_code = serializers.CharField(source="related_ticket.code", read_only=True)
     related_ticket_title = serializers.CharField(source="related_ticket.title", read_only=True)
     related_ticket_status = serializers.CharField(source="related_ticket.status", read_only=True)
+    related_ticket_responsible = serializers.CharField(
+        source="related_ticket.responsible_technician.full_name_or_username", read_only=True, default=""
+    )
+    related_ticket_category = serializers.CharField(source="related_ticket.category", read_only=True, default="")
 
     class Meta:
         model = TicketRelation

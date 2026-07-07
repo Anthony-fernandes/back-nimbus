@@ -475,6 +475,7 @@ class TicketRelation(BaseModel):
         ("relacionado", "Relacionado a"),
         ("bloqueia", "Bloqueia"),
         ("bloqueado_por", "Bloqueado por"),
+        ("subchamado", "Subchamado de"),
     ]
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_relations")
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="relations")
