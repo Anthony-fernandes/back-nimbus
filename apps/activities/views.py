@@ -63,6 +63,8 @@ class ActivityViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         if not user_has_any_permission(self.request.user, ["activities.edit", "activities.manage"]):
             raise PermissionDenied("Seu perfil nao pode alterar atividades.")
+        from common.status_rules import validate_activity_update
+        validate_activity_update(serializer.instance, self.request.data)
         serializer.save()
 
     def perform_destroy(self, instance):

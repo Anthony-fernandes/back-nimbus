@@ -131,6 +131,11 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
             raise PermissionDenied("Seu perfil nao pode planejar atividades em sprints.")
+        from common.status_rules import ACTIVITY_SPRINT_ELIGIBLE
+        activity = serializer.validated_data.get("activity")
+        if activity and activity.status not in ACTIVITY_SPRINT_ELIGIBLE:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"detail": f"Atividades em '{activity.status}' não podem ser planejadas em sprint."})
         super().perform_create(serializer)
 
     def perform_update(self, serializer):
@@ -177,6 +182,11 @@ class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
             raise PermissionDenied("Seu perfil nao pode planejar chamados em sprints.")
+        from common.status_rules import TICKET_SPRINT_ELIGIBLE
+        ticket = serializer.validated_data.get("ticket")
+        if ticket and ticket.status not in TICKET_SPRINT_ELIGIBLE:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"detail": f"Chamados em '{ticket.status}' não podem ser planejados em sprint."})
         super().perform_create(serializer)
 
     def perform_update(self, serializer):

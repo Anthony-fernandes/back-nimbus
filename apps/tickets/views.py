@@ -247,6 +247,8 @@ class TicketViewSet(CompanyScopedModelViewSet):
         instance._changed_by = self.request.user
         instance._changed_by_name = getattr(self.request.user, "full_name_or_username", str(self.request.user))
         instance._status_change_reason = self.request.data.get("status_change_reason", "")
+        from common.status_rules import validate_ticket_update
+        validate_ticket_update(ticket, self.request.data)
         serializer.save()
         updated = serializer.instance
         # Prioridade ou categoria mudaram → o prazo de SLA precisa refletir a nova política
