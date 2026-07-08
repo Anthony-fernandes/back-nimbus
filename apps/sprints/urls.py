@@ -14,11 +14,11 @@ from .views import (
 )
 
 router = DefaultRouter()
-router.register("", SprintViewSet, basename="sprints")
 router.register("retrospectives", SprintRetrospectiveViewSet, basename="sprint-retrospective")
 router.register("reviews", SprintReviewViewSet, basename="sprint-review")
 router.register("ticket-plans", SprintTicketPlanViewSet, basename="sprint-ticket-plan")
 router.register("sprint-participants", SprintParticipantViewSet, basename="sprint-participants")
+router.register("", SprintViewSet, basename="sprints")
 
 urlpatterns = router.urls + [
     path("<uuid:pk>/close/", close_sprint, name="sprint-close"),
