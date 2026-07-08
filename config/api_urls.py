@@ -40,6 +40,7 @@ urlpatterns = [
     path("sla-policies/", include("apps.tickets.sla_urls")),
     path("reports/", include("apps.reports.urls")),
     path("teams/", include("apps.teams.urls")),
+    path("team-members/", include("apps.teams.member_urls")),
     path("webhooks/", include("apps.webhooks.urls")),
     path("superadmin/", include("config.superadmin_urls")),
 ]
