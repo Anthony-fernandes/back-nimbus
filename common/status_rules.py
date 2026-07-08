@@ -15,7 +15,6 @@ TICKET_ACTIONS = {
     "Aguardando Aprovacao":  {"approve", "reject", "cancel"},
     "Aprovado":              {"responsible", "team", "sprint", "priority"},
     "Reprovado":             {"reopen"},
-    "Backlog":               {"edit", "priority", "responsible", "team", "sprint", "cancel"},
     "Aguardando atendimento": {"edit", "start", "priority", "responsible", "team", "sprint", "cancel"},
     "Em atendimento":        {"edit", "pause", "wait_customer", "validate", "resolve", "cancel", "responsible", "sprint", "priority"},
     "Aguardando cliente":    {"resume", "pause", "cancel", "responsible"},
@@ -27,13 +26,12 @@ TICKET_ACTIONS = {
 
 # Transições de status permitidas via PATCH direto
 TICKET_TRANSITIONS = {
-    "Aberto": {"Triagem", "Aguardando Aprovacao", "Cancelado", "Backlog"},
-    "Triagem": {"Aguardando Aprovacao", "Aprovado", "Reprovado", "Backlog", "Aguardando atendimento", "Cancelado"},
+    "Aberto": {"Triagem", "Aguardando Aprovacao", "Cancelado"},
+    "Triagem": {"Aguardando Aprovacao", "Aprovado", "Reprovado", "Aguardando atendimento", "Cancelado"},
     "Aguardando Aprovacao": {"Aprovado", "Reprovado", "Cancelado"},
-    "Aprovado": {"Backlog", "Aguardando atendimento", "Em atendimento"},
+    "Aprovado": {"Aguardando atendimento", "Em atendimento"},
     "Reprovado": set(),
-    "Backlog": {"Aguardando atendimento", "Em atendimento", "Cancelado"},
-    "Aguardando atendimento": {"Em atendimento", "Backlog", "Cancelado"},
+    "Aguardando atendimento": {"Em atendimento", "Cancelado"},
     "Em atendimento": {"Aguardando cliente", "Validacao", "Pausado", "Finalizado", "Cancelado"},
     "Aguardando cliente": {"Em atendimento", "Pausado", "Cancelado"},
     "Validacao": {"Em atendimento", "Finalizado"},
@@ -42,7 +40,7 @@ TICKET_TRANSITIONS = {
     "Finalizado": set(),
 }
 
-TICKET_SPRINT_ELIGIBLE = {"Triagem", "Aprovado", "Backlog", "Aguardando atendimento", "Em atendimento"}
+TICKET_SPRINT_ELIGIBLE = {"Triagem", "Aprovado", "Aguardando atendimento", "Em atendimento"}
 
 # ── Atividades ──────────────────────────────────────────────────────
 ACTIVITY_DONE = {"Concluída", "Concluido", "Concluído", "Done", "Cancelada", "Cancelado"}
@@ -116,6 +114,14 @@ def validate_activity_update(activity, data: dict):
     new_status = data.get("status")
     perms = rule["permissions"]
 
+    # Backlog é status de item NÃO planejado: atividade vinculada a sprint não pode ficar em Backlog
+    incoming_sprint = data.get("sprint", "__unset__")
+    will_have_sprint = (
+        bool(incoming_sprint) if incoming_sprint != "__unset__" else bool(activity.sprint_id)
+    )
+    if new_status == "Backlog" and will_have_sprint:
+        _err("Atividade planejada em sprint não pode voltar para 'Backlog'. Remova-a da sprint primeiro.")
+
     if rule["is_final"]:
         blocked = {"status", "priority", "assignee", "sprint", "title", "description",
                    "est_hours", "story_points", "due_at"}
@@ -181,7 +187,7 @@ PHASE_DEFAULTS = {
 # Mapeia os status builtin para fases (para responder available-actions uniformemente)
 BUILTIN_TICKET_PHASES = {
     "Aberto": "entrada", "Triagem": "triagem", "Aguardando Aprovacao": "aprovacao",
-    "Aprovado": "triagem", "Reprovado": "final", "Backlog": "triagem",
+    "Aprovado": "triagem", "Reprovado": "final",
     "Aguardando atendimento": "triagem", "Em atendimento": "atendimento",
     "Aguardando cliente": "aguardando_terceiro", "Validacao": "validacao",
     "Pausado": "pausado", "Cancelado": "final", "Finalizado": "final",

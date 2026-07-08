@@ -131,14 +131,32 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
             raise PermissionDenied("Seu perfil nao pode planejar atividades em sprints.")
-        from common.status_rules import resolve_status_rule
+        from rest_framework.exceptions import ValidationError
+        from common.status_rules import ACTIVITY_SPRINT_ELIGIBLE, resolve_status_rule
+
         activity = serializer.validated_data.get("activity")
+        sprint = serializer.validated_data.get("sprint")
         if activity:
+            # Elegibilidade: builtin usa a lista oficial (Backlog/A fazer/Em progresso/Bloqueado);
+            # status customizados seguem as permissões configuradas no workflow.
             rule = resolve_status_rule(activity.company, "activity", activity.status)
-            if not rule["permissions"].get("allows_send_to_sprint"):
-                from rest_framework.exceptions import ValidationError
+            allowed = (
+                rule["permissions"].get("allows_send_to_sprint")
+                if rule.get("custom")
+                else activity.status in ACTIVITY_SPRINT_ELIGIBLE
+            )
+            if not allowed:
                 raise ValidationError({"detail": f"Atividades em '{activity.status}' não podem ser planejadas em sprint."})
+            # Backlog × Sprint são mutuamente exclusivos: item já planejado não pode ir para outra sprint
+            if activity.sprint_id and sprint and str(activity.sprint_id) != str(sprint.id):
+                raise ValidationError({"detail": "Esta atividade já está planejada em outra sprint. Remova-a de lá antes de replanejar."})
         super().perform_create(serializer)
+        # Planejar = vincular à sprint e sair do Backlog (status Backlog → A fazer)
+        if activity and sprint:
+            activity.sprint = sprint
+            if activity.status == "Backlog":
+                activity.status = "A fazer"
+            activity.save(update_fields=["sprint", "status", "updated_at"])
 
     def perform_update(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
@@ -146,9 +164,16 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
-        if not user_has_permission(self.request.user, "sprints.delete"):
+        if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage", "sprints.delete"]):
             raise PermissionDenied("Seu perfil nao pode excluir planejamentos de sprint.")
+        # Remover da sprint devolve a atividade ao Backlog (se pendente), mantendo o status atual
+        activity = instance.activity
+        sprint_id = instance.sprint_id
         instance.delete()
+        from common.status_rules import ACTIVITY_DONE
+        if activity and str(activity.sprint_id) == str(sprint_id) and activity.status not in ACTIVITY_DONE:
+            activity.sprint = None
+            activity.save(update_fields=["sprint", "updated_at"])
 
 
 class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
@@ -184,14 +209,28 @@ class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
     def perform_create(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
             raise PermissionDenied("Seu perfil nao pode planejar chamados em sprints.")
-        from common.status_rules import resolve_status_rule
+        from rest_framework.exceptions import ValidationError
+        from common.status_rules import TICKET_SPRINT_ELIGIBLE, resolve_status_rule
+
         ticket = serializer.validated_data.get("ticket")
+        sprint = serializer.validated_data.get("sprint")
         if ticket:
             rule = resolve_status_rule(ticket.company, "ticket", ticket.status)
-            if not rule["permissions"].get("allows_send_to_sprint"):
-                from rest_framework.exceptions import ValidationError
+            allowed = (
+                rule["permissions"].get("allows_send_to_sprint")
+                if rule.get("custom")
+                else ticket.status in TICKET_SPRINT_ELIGIBLE
+            )
+            if not allowed:
                 raise ValidationError({"detail": f"Chamados em '{ticket.status}' não podem ser planejados em sprint."})
+            if ticket.sprint_id and sprint and str(ticket.sprint_id) != str(sprint.id):
+                raise ValidationError({"detail": "Este chamado já está planejado em outra sprint. Remova-o de lá antes de replanejar."})
         super().perform_create(serializer)
+        # Planejar vincula à sprint (sai do Backlog) SEM alterar o status operacional:
+        # o chamado só muda para 'Em atendimento' quando alguém iniciar o atendimento.
+        if ticket and sprint:
+            ticket.sprint = sprint
+            ticket.save(update_fields=["sprint", "updated_at"])
 
     def perform_update(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):
@@ -199,9 +238,15 @@ class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
         serializer.save()
 
     def perform_destroy(self, instance):
-        if not user_has_permission(self.request.user, "sprints.delete"):
+        if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage", "sprints.delete"]):
             raise PermissionDenied("Seu perfil nao pode excluir planejamentos de chamados.")
+        # Remover da sprint devolve o chamado ao Backlog se ainda estiver pendente
+        ticket = instance.ticket
+        sprint_id = instance.sprint_id
         instance.delete()
+        if ticket and str(ticket.sprint_id) == str(sprint_id) and ticket.status not in ("Finalizado", "Cancelado", "Reprovado"):
+            ticket.sprint = None
+            ticket.save(update_fields=["sprint", "updated_at"])
 
 
 class SprintParticipantViewSet(CompanyScopedModelViewSet):
@@ -366,13 +411,44 @@ def close_sprint(request, pk):
     planned_items = len(all_activity_ids) + len(ticket_plans)
     delivered_items = done_activities.count() + len(done_tickets)
 
-    # ── Devolver incompletos ao backlog ────────────────────────────
-    incomplete_activities.update(sprint=None, status="Backlog")
-    SprintActivityPlan.objects.filter(
-        sprint=sprint, activity_id__in=[i for i in incomplete_ids_str]
-    ).delete()
-    for plan in incomplete_ticket_plans:
-        plan.delete()
+    # ── Tratar itens pendentes conforme decisão do usuário ─────────
+    # pending_action: "backlog" (padrão — devolve ao backlog) | "move" (move para outra sprint)
+    pending_action = request.data.get("pending_action") or "backlog"
+    target_sprint = None
+    if pending_action == "move":
+        target_id = request.data.get("target_sprint_id")
+        target_sprint = Sprint.objects.filter(
+            pk=target_id, company=sprint.company, deleted_at__isnull=True
+        ).exclude(pk=sprint.pk).first()
+        if not target_sprint:
+            return _R({"detail": "Informe uma sprint de destino válida em target_sprint_id."}, status=400)
+
+    if target_sprint:
+        # Move os itens pendentes (FK + planos) para a sprint de destino
+        incomplete_activities.update(sprint=target_sprint)
+        SprintActivityPlan.objects.filter(
+            sprint=sprint, activity_id__in=incomplete_ids_str
+        ).update(sprint=target_sprint)
+        for plan in incomplete_ticket_plans:
+            plan.sprint = target_sprint
+            plan.save(update_fields=["sprint", "updated_at"])
+            if plan.ticket and plan.ticket.sprint_id == sprint.id:
+                plan.ticket.sprint = target_sprint
+                plan.ticket.save(update_fields=["sprint", "updated_at"])
+    else:
+        # Devolve ao Backlog: remove o vínculo com a sprint mantendo o status de execução.
+        # Só volta ao status "Backlog" quem ainda não iniciou (A fazer/Backlog).
+        incomplete_activities.filter(status__in=["A fazer", "Backlog"]).update(sprint=None, status="Backlog")
+        incomplete_activities.exclude(status__in=["A fazer", "Backlog"]).update(sprint=None)
+        SprintActivityPlan.objects.filter(
+            sprint=sprint, activity_id__in=incomplete_ids_str
+        ).delete()
+        for plan in incomplete_ticket_plans:
+            ticket = plan.ticket
+            plan.delete()
+            if ticket and ticket.sprint_id == sprint.id:
+                ticket.sprint = None
+                ticket.save(update_fields=["sprint", "updated_at"])
 
     review, _ = SprintReview.objects.get_or_create(
         sprint=sprint,

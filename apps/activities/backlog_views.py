@@ -7,9 +7,11 @@ from rest_framework.response import Response
 from apps.activities.models import Activity
 from apps.tickets.models import Ticket
 
-# Statuses que caracterizam item "no backlog" (aguardando planejamento)
-ACTIVITY_BACKLOG_STATUSES = ["Backlog", "A fazer"]
-TICKET_BACKLOG_STATUSES = ["Aberto", "Triagem", "Backlog", "Aguardando atendimento"]
+# REGRA DE PRODUTO: Backlog = fila de planejamento (itens SEM sprint), não um status.
+# Um item planejado (sprint vinculada) sai da visão padrão do Backlog.
+# Statuses planejáveis (pendentes, não finais):
+ACTIVITY_BACKLOG_STATUSES = ["Backlog", "A fazer", "Em progresso", "Bloqueado"]
+TICKET_BACKLOG_STATUSES = ["Aberto", "Triagem", "Aprovado", "Aguardando atendimento", "Em atendimento"]
 
 
 def _activity_type_to_backlog(activity_type: str) -> str:
@@ -32,7 +34,10 @@ def _collect_items(request):
     status_f = params.get("status") or ""
     priority = params.get("priority") or ""
     team = params.get("team") or ""
-    no_sprint = params.get("no_sprint") == "true"
+    # planning: unplanned (padrão — sem sprint) | planned (com sprint) | all
+    planning = params.get("planning") or ("all" if params.get("no_sprint") == "true" else "unplanned")
+    if params.get("no_sprint") == "true":
+        planning = "unplanned"
 
     items = []
 
@@ -47,9 +52,11 @@ def _collect_items(request):
             qs = qs.filter(priority=priority)
         if status_f:
             qs = qs.filter(status=status_f)
-        if no_sprint:
+        if planning == "unplanned":
             qs = qs.filter(sprint__isnull=True)
-        if team:
+        elif planning == "planned":
+            qs = qs.filter(sprint__isnull=False)
+        if team and planning != "unplanned":
             qs = qs.filter(sprint__team_id=team)
         for a in qs:
             btype = _activity_type_to_backlog(a.type)
@@ -81,8 +88,12 @@ def _collect_items(request):
             qs = qs.filter(priority=priority)
         if status_f:
             qs = qs.filter(status=status_f)
-        if no_sprint:
+        if planning == "unplanned":
             qs = qs.filter(sprint__isnull=True)
+        elif planning == "planned":
+            qs = qs.filter(sprint__isnull=False)
+        if team and planning != "unplanned":
+            qs = qs.filter(sprint__team_id=team)
         if search:
             qs = qs.filter(
                 Q(title__icontains=search) | Q(code__icontains=search)

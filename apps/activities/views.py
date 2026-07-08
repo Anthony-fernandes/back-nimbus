@@ -65,7 +65,13 @@ class ActivityViewSet(CompanyScopedModelViewSet):
             raise PermissionDenied("Seu perfil nao pode alterar atividades.")
         from common.status_rules import validate_activity_update
         validate_activity_update(serializer.instance, self.request.data)
-        serializer.save()
+        instance = serializer.instance
+        data = self.request.data
+        # Planejar via PATCH direto: atividade em Backlog vinculada a sprint vai para 'A fazer'
+        if data.get("sprint") and instance.status == "Backlog" and not data.get("status"):
+            serializer.save(status="A fazer")
+        else:
+            serializer.save()
 
     def perform_destroy(self, instance):
         if not user_has_permission(self.request.user, "activities.delete"):

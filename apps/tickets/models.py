@@ -21,7 +21,6 @@ class Ticket(BaseModel):
         ("Reprovado", "Reprovado"),
         ("Ajustes Solicitados", "Ajustes Solicitados"),
         ("Triagem", "Triagem"),
-        ("Backlog", "Backlog"),
         ("Aguardando atendimento", "Aguardando atendimento"),
         ("Em atendimento", "Em atendimento"),
         ("Aguardando cliente", "Aguardando cliente"),
