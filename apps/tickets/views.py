@@ -552,6 +552,21 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 status=400,
             )
 
+        # Subchamados bloqueantes ainda abertos impedem a finalização do pai
+        blocking_open = ticket.relations.filter(
+            relation_type="subchamado",
+            blocks_parent=True,
+            deleted_at__isnull=True,
+        ).exclude(related_ticket__status__in=["Finalizado", "Cancelado", "Resolvido"])
+        if blocking_open.exists():
+            codes = ", ".join(
+                blocking_open.values_list("related_ticket__code", flat=True)[:5]
+            )
+            return Response(
+                {"detail": f"Subchamados bloqueantes ainda abertos: {codes}. Encerre-os antes de finalizar."},
+                status=400,
+            )
+
         final_status = "Cancelado" if resolution_type == "Cancelado" else "Finalizado"
         previous_status = ticket.status
 

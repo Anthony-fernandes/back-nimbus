@@ -480,6 +480,8 @@ class TicketRelation(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="ticket_relations")
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="relations")
     related_ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="related_by")
+    # Subchamado que trava a finalização do chamado pai enquanto estiver aberto
+    blocks_parent = models.BooleanField(default=False)
     relation_type = models.CharField(max_length=30, choices=RELATION_TYPES, default="relacionado")
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_ticket_relations"
