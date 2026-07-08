@@ -4,6 +4,8 @@ from .models import Sprint, SprintActivityPlan, SprintParticipant, SprintRetrosp
 
 class SprintSerializer(serializers.ModelSerializer):
     project_name = serializers.CharField(source="project.name", read_only=True)
+    team_name = serializers.CharField(source="team.name", read_only=True, default="")
+    team_color = serializers.CharField(source="team.color", read_only=True, default="")
     lead_name = serializers.CharField(source="lead.full_name_or_username", read_only=True)
     total_capacity = serializers.SerializerMethodField(read_only=True)
 

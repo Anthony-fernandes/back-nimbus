@@ -14,7 +14,7 @@ class SprintViewSet(CompanyScopedModelViewSet):
     queryset = Sprint.objects.all()
     serializer_class = SprintSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ["company", "project", "status", "lead"]
+    filterset_fields = ["company", "project", "status", "lead", "team"]
     search_fields = ["name", "goal", "project__name"]
     ordering_fields = "__all__"
 
@@ -385,6 +385,62 @@ def close_sprint(request, pk):
         "planned_points": planned_pts,
         "delivered_items": delivered_items,
         "planned_items": planned_items,
+    })
+
+
+@api_view(["GET"])
+@_pc([_IA])
+def sprint_metrics(request, pk):
+    """Agregados da sprint para indicadores configuráveis do frontend."""
+    from apps.sprints.models import Sprint, SprintActivityPlan, SprintTicketPlan
+    from apps.activities.models import Activity, ActivityTimeEntry
+
+    try:
+        sprint = Sprint.objects.get(pk=pk, company=request.user.company)
+    except Sprint.DoesNotExist:
+        return _R({"detail": "Sprint não encontrada."}, status=404)
+
+    a_plans = list(SprintActivityPlan.objects.filter(sprint=sprint, deleted_at__isnull=True).select_related("activity"))
+    t_plans = list(SprintTicketPlan.objects.filter(sprint=sprint, deleted_at__isnull=True).select_related("ticket"))
+
+    done_act = [p for p in a_plans if p.activity and p.activity.status in DONE_STATUSES]
+    done_tkt = [p for p in t_plans if p.ticket and p.ticket.status in DONE_STATUSES]
+    blocked = [p for p in a_plans if p.activity and p.activity.status in ("Bloqueado", "Pausado")]
+    in_progress = [
+        p for p in a_plans + t_plans
+        if (getattr(p, "activity", None) or getattr(p, "ticket", None))
+        and (getattr(p, "activity", None) or getattr(p, "ticket", None)).status
+        in ("Em progresso", "Em atendimento", "Em andamento")
+    ]
+
+    sp_planned = sum(p.story_points or 0 for p in a_plans + t_plans)
+    sp_done = sum(p.story_points or 0 for p in done_act + done_tkt)
+    hours_planned = float(sum(p.planned_hours or 0 for p in a_plans + t_plans))
+    activity_ids = [p.activity_id for p in a_plans]
+    hours_done = float(sum(
+        e.hours for e in ActivityTimeEntry.objects.filter(
+            sprint=sprint, deleted_at__isnull=True,
+        )
+    ))
+    capacity = sprint.total_capacity
+    total_items = len(a_plans) + len(t_plans)
+    done_items = len(done_act) + len(done_tkt)
+
+    return _R({
+        "total_items": total_items,
+        "activities": len(a_plans),
+        "tickets": len(t_plans),
+        "done": done_items,
+        "in_progress": len(in_progress),
+        "pending": max(0, total_items - done_items - len(in_progress) - len(blocked)),
+        "blocked": len(blocked),
+        "story_points_planned": sp_planned,
+        "story_points_done": sp_done,
+        "hours_planned": hours_planned,
+        "hours_done": hours_done,
+        "capacity": capacity,
+        "capacity_used_pct": round(hours_planned / capacity * 100, 1) if capacity else 0,
+        "progress_pct": round(done_items / total_items * 100, 1) if total_items else 0,
     })
 
 

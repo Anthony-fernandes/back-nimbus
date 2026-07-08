@@ -26,6 +26,7 @@ COMPLEXITY_CHOICES = [
 class Sprint(BaseModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="sprints")
     project = models.ForeignKey(Project, on_delete=models.SET_NULL, null=True, blank=True, related_name="sprints")
+    team = models.ForeignKey("teams.Team", on_delete=models.SET_NULL, null=True, blank=True, related_name="sprints")
     name = models.CharField(max_length=255)
     goal = models.TextField(blank=True, default="")
     lead = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="lead_sprints")

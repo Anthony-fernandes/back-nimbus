@@ -216,7 +216,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "common.pagination.StandardPagination",
     "PAGE_SIZE": 50,
     "EXCEPTION_HANDLER": "common.exceptions.custom_exception_handler",
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
