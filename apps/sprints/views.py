@@ -440,21 +440,80 @@ def sprint_metrics(request, pk):
     total_items = len(a_plans) + len(t_plans)
     done_items = len(done_act) + len(done_tkt)
 
+    # Bugs planejados na sprint (atividades do tipo Bug)
+    bugs = len([p for p in a_plans if p.activity and (p.activity.type or "").lower() == "bug"])
+
+    # Itens atrasados: não concluídos com prazo vencido (due da atividade,
+    # planned_end_date do plano ou fim da sprint)
+    from datetime import date as _date
+    today = _date.today()
+    overdue = 0
+    for p in a_plans:
+        item = p.activity
+        if not item or item.status in DONE_STATUSES:
+            continue
+        deadline = item.due_at or p.planned_end_date or sprint.end_at
+        if deadline and deadline < today:
+            overdue += 1
+    for p in t_plans:
+        item = p.ticket
+        if not item or item.status in ("Finalizado", "Cancelado"):
+            continue
+        deadline = p.planned_end_date or sprint.end_at
+        if deadline and deadline < today:
+            overdue += 1
+
+    progress_pct = round(done_items / total_items * 100, 1) if total_items else 0
+
+    # Risco da sprint: avanço real vs tempo decorrido + bloqueios/atrasos
+    levels = ["baixo", "medio", "alto"]
+    risk = "baixo"
+    risk_reasons = []
+
+    def bump(level):
+        nonlocal risk
+        if levels.index(level) > levels.index(risk):
+            risk = level
+
+    if sprint.status == "Em andamento" and sprint.start_at and sprint.end_at:
+        total_days = max(1, (sprint.end_at - sprint.start_at).days)
+        elapsed_pct = min(100, max(0, (today - sprint.start_at).days / total_days * 100))
+        gap = elapsed_pct - progress_pct
+        if gap > 30:
+            bump("alto")
+            risk_reasons.append(f"Progresso de {progress_pct:.0f}% com {elapsed_pct:.0f}% do tempo decorrido")
+        elif gap > 10:
+            bump("medio")
+            risk_reasons.append("Progresso abaixo do ritmo esperado")
+        if overdue:
+            bump("alto" if overdue > 2 else "medio")
+            risk_reasons.append(f"{overdue} item(ns) atrasado(s)")
+        if blocked:
+            bump("medio")
+            risk_reasons.append(f"{len(blocked)} item(ns) bloqueado(s)")
+    elif sprint.status == "Finalizada" and total_items and progress_pct < 70:
+        bump("medio")
+        risk_reasons.append("Sprint encerrada com entrega abaixo de 70%")
+
     return _R({
         "total_items": total_items,
         "activities": len(a_plans),
         "tickets": len(t_plans),
+        "bugs": bugs,
         "done": done_items,
         "in_progress": len(in_progress),
         "pending": max(0, total_items - done_items - len(in_progress) - len(blocked)),
         "blocked": len(blocked),
+        "overdue": overdue,
         "story_points_planned": sp_planned,
         "story_points_done": sp_done,
         "hours_planned": hours_planned,
         "hours_done": hours_done,
         "capacity": capacity,
         "capacity_used_pct": round(hours_planned / capacity * 100, 1) if capacity else 0,
-        "progress_pct": round(done_items / total_items * 100, 1) if total_items else 0,
+        "progress_pct": progress_pct,
+        "risk": risk,
+        "risk_reasons": risk_reasons,
     })
 
 
