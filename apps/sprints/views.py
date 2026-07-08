@@ -473,7 +473,7 @@ def sprint_velocity(request):
     qs = Sprint.objects.filter(company=company, deleted_at__isnull=True)
     if project_id:
         qs = qs.filter(project_id=project_id)
-    qs = qs.filter(status__in=["Concluída", "Concluido"]).order_by("-end_at")[:limit]
+    qs = qs.filter(status__in=["Concluída", "Concluido", "Finalizada", "Concluída/Fechada"]).order_by("-end_at")[:limit]
 
     result = []
     for sprint in reversed(list(qs)):
