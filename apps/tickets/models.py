@@ -510,6 +510,24 @@ class TicketWorkflowStatus(BaseModel):
     next_statuses = models.JSONField(default=list, blank=True)
     system = models.BooleanField(default=False)
 
+    # Regras de negócio configuráveis por status (workflow dinâmico)
+    ITEM_TYPES = [("ticket", "Chamado"), ("activity", "Atividade")]
+    PHASES = [
+        ("entrada", "Entrada"),
+        ("triagem", "Triagem"),
+        ("aprovacao", "Aprovação"),
+        ("atendimento", "Atendimento"),
+        ("aguardando_terceiro", "Aguardando terceiro"),
+        ("validacao", "Validação"),
+        ("pausado", "Pausado"),
+        ("final", "Final"),
+    ]
+    item_type = models.CharField(max_length=20, choices=ITEM_TYPES, default="ticket")
+    phase = models.CharField(max_length=30, choices=PHASES, blank=True, default="")
+    # dicts allows_* / requires_* — vazios herdam os padrões da fase
+    permissions = models.JSONField(default=dict, blank=True)
+    requirements = models.JSONField(default=dict, blank=True)
+
     class Meta:
         ordering = ["order", "name"]
         unique_together = ("company", "slug")

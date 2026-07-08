@@ -63,59 +63,188 @@ def _err(msg):
 
 
 def validate_ticket_update(ticket, data: dict):
-    """Valida um PATCH de chamado contra a matriz de status."""
+    """Valida um PATCH de chamado contra a regra efetiva do status (builtin ou workflow)."""
     status = ticket.status or "Aberto"
-    new_status = data.get("status")
+    rule = resolve_status_rule(ticket.company, "ticket", status)
+    if not rule["found"]:
+        _err(f"O status '{status}' não possui regras configuradas. "
+             "Configure este status no workflow em Configurações antes de operar chamados nele.")
 
-    if status in TICKET_FINAL:
-        # Encerrados: nada muda via PATCH (reabertura só pelo endpoint /reopen/)
+    new_status = data.get("status")
+    perms = rule["permissions"]
+
+    if rule["is_final"]:
         blocked = {"status", "priority", "responsible_technician", "sprint", "title",
                    "description", "category", "team", "due_at", "est_hours"}
-        touched = blocked & set(data.keys())
-        if touched:
-            label = "finalizados" if status == "Finalizado" else status.lower() + "s"
-            _err(f"Chamados {label} não podem ser editados. Reabra o chamado para alterar.")
+        if blocked & set(data.keys()):
+            _err("Chamados encerrados não podem ser editados. Reabra o chamado para alterar.")
 
     if new_status and new_status != status:
-        allowed = TICKET_TRANSITIONS.get(status, set())
-        if new_status not in allowed:
-            _err(f"Não é permitido mover o chamado de '{status}' para '{new_status}'.")
+        if new_status not in rule["transitions"]:
+            _err(f"Não é permitido mover o chamado de '{status}' para '{new_status}'. "
+                 f"Transições permitidas: {', '.join(rule['transitions']) or 'nenhuma'}.")
+        target = resolve_status_rule(ticket.company, "ticket", new_status)
+        if target["found"] and target["requirements"].get("requires_reason") and not data.get("status_change_reason"):
+            _err(f"O status '{new_status}' exige um motivo para a transição.")
+        if target["found"] and target["requirements"].get("requires_assignee") and not (
+            data.get("responsible_technician") or ticket.responsible_technician_id
+        ):
+            _err(f"Defina um técnico responsável antes de mover para '{new_status}'.")
 
-    if "sprint" in data and data.get("sprint"):
-        if status not in TICKET_SPRINT_ELIGIBLE:
-            _err(f"Chamados em '{status}' não podem ser enviados para uma sprint. "
-                 "Apenas chamados em Triagem, Aprovado, Backlog, Aguardando atendimento ou Em atendimento.")
+    if "sprint" in data and data.get("sprint") and not perms.get("allows_send_to_sprint"):
+        _err(f"Chamados em '{status}' não podem ser enviados para uma sprint.")
 
-    if "priority" in data and status == "Validacao":
-        _err("A prioridade não pode ser alterada durante a validação.")
+    if "priority" in data and not perms.get("allows_priority_change"):
+        _err(f"A prioridade não pode ser alterada com o chamado em '{status}'.")
 
-    if "responsible_technician" in data and status == "Aguardando Aprovacao":
-        _err("Atribua o técnico após a aprovação do chamado.")
+    if "responsible_technician" in data and not perms.get("allows_assignment"):
+        _err(f"O responsável não pode ser alterado com o chamado em '{status}'.")
+
+    operational = {"title", "description", "category", "team", "due_at", "est_hours"}
+    if (operational & set(data.keys())) and not perms.get("allows_edit"):
+        _err(f"Chamados em '{status}' não podem ser editados.")
 
 
 def validate_activity_update(activity, data: dict):
-    """Valida um PATCH de atividade contra a matriz de status."""
+    """Valida um PATCH de atividade contra a regra efetiva do status."""
     status = activity.status or "Backlog"
-    new_status = data.get("status")
+    rule = resolve_status_rule(activity.company, "activity", status)
+    if not rule["found"]:
+        _err(f"O status '{status}' não possui regras configuradas. "
+             "Configure este status no workflow em Configurações antes de operar atividades nele.")
 
-    if status in ACTIVITY_DONE:
+    new_status = data.get("status")
+    perms = rule["permissions"]
+
+    if rule["is_final"]:
         blocked = {"status", "priority", "assignee", "sprint", "title", "description",
                    "est_hours", "story_points", "due_at"}
-        touched = blocked & set(data.keys())
-        if touched:
+        if blocked & set(data.keys()):
             _err("Atividades concluídas não podem ser alteradas. Reabra a atividade para continuar.")
 
     if new_status and new_status != status:
-        if new_status in ACTIVITY_DONE and status != "Em revisao":
-            # Conclusão sem revisão só pelo endpoint /resolve/ (que documenta a resolução)
+        target = resolve_status_rule(activity.company, "activity", new_status)
+        if target["found"] and target["is_final"] and status != "Em revisao":
             _err("Conclua a atividade pelo fluxo de resolução (Execução → Finalizar) ou envie para revisão antes.")
-        allowed = ACTIVITY_TRANSITIONS.get(status, set())
-        if new_status not in allowed and new_status not in ACTIVITY_DONE:
+        if new_status not in rule["transitions"] and not (target["found"] and target["is_final"]):
             _err(f"Não é permitido mover a atividade de '{status}' para '{new_status}'.")
+        if target["found"] and target["requirements"].get("requires_reason") and not data.get("status_reason"):
+            _err(f"O status '{new_status}' exige um motivo para a transição.")
 
-    if "sprint" in data and data.get("sprint"):
-        if status not in ACTIVITY_SPRINT_ELIGIBLE:
-            _err(f"Atividades em '{status}' não podem ser enviadas para uma sprint.")
+    if "sprint" in data and data.get("sprint") and not perms.get("allows_send_to_sprint"):
+        _err(f"Atividades em '{status}' não podem ser enviadas para uma sprint.")
+
+    if "priority" in data and not perms.get("allows_priority_change"):
+        _err(f"A prioridade não pode ser alterada com a atividade em '{status}'.")
 
     if new_status == "Em progresso" and not (data.get("assignee") or activity.assignee_id):
         _err("Defina um responsável antes de iniciar o progresso da atividade.")
+
+
+# ── Workflow configurável (TicketWorkflowStatus) ────────────────────
+
+ALL_PERMS = [
+    "allows_edit", "allows_comment", "allows_attachment", "allows_assignment",
+    "allows_priority_change", "allows_send_to_sprint", "allows_backlog",
+    "allows_start_work", "allows_pause", "allows_resume",
+    "allows_send_to_validation", "allows_finish", "allows_cancel", "allows_reopen",
+]
+ALL_REQS = [
+    "requires_reason", "requires_comment", "requires_assignee",
+    "requires_resolution", "requires_approval",
+]
+
+# Sugestões de permissão por fase — aplicadas quando o status não define as suas
+PHASE_DEFAULTS = {
+    "entrada": {"allows_edit": True, "allows_comment": True, "allows_attachment": True,
+                "allows_assignment": True, "allows_priority_change": True,
+                "allows_backlog": True, "allows_cancel": True},
+    "triagem": {"allows_edit": True, "allows_comment": True, "allows_attachment": True,
+                "allows_assignment": True, "allows_priority_change": True,
+                "allows_send_to_sprint": True, "allows_backlog": True,
+                "allows_start_work": True, "allows_cancel": True},
+    "aprovacao": {"allows_comment": True, "allows_attachment": True, "allows_cancel": True},
+    "atendimento": {"allows_edit": True, "allows_comment": True, "allows_attachment": True,
+                    "allows_assignment": True, "allows_priority_change": True,
+                    "allows_send_to_sprint": True, "allows_pause": True,
+                    "allows_send_to_validation": True, "allows_finish": True,
+                    "allows_cancel": True},
+    "aguardando_terceiro": {"allows_comment": True, "allows_attachment": True,
+                            "allows_resume": True, "allows_pause": True,
+                            "allows_cancel": True},
+    "validacao": {"allows_comment": True, "allows_finish": True, "allows_resume": True},
+    "pausado": {"allows_comment": True, "allows_attachment": True,
+                "allows_resume": True, "allows_cancel": True},
+    "final": {"allows_comment": True, "allows_reopen": True},
+}
+
+# Mapeia os status builtin para fases (para responder available-actions uniformemente)
+BUILTIN_TICKET_PHASES = {
+    "Aberto": "entrada", "Triagem": "triagem", "Aguardando Aprovacao": "aprovacao",
+    "Aprovado": "triagem", "Reprovado": "final", "Backlog": "triagem",
+    "Aguardando atendimento": "triagem", "Em atendimento": "atendimento",
+    "Aguardando cliente": "aguardando_terceiro", "Validacao": "validacao",
+    "Pausado": "pausado", "Cancelado": "final", "Finalizado": "final",
+}
+BUILTIN_ACTIVITY_PHASES = {
+    "Backlog": "entrada", "A fazer": "triagem", "Em progresso": "atendimento",
+    "Em revisao": "validacao", "Bloqueado": "pausado",
+    "Concluída": "final", "Concluido": "final", "Concluído": "final",
+    "Cancelado": "final", "Cancelada": "final",
+}
+
+
+def resolve_status_rule(company, item_type: str, status_name: str):
+    """Retorna a regra efetiva de um status: builtin ou configurada no workflow.
+
+    Shape: {found, is_final, phase, permissions, requirements, transitions}
+    """
+    from apps.tickets.models import TicketWorkflowStatus
+
+    builtin_phases = BUILTIN_TICKET_PHASES if item_type == "ticket" else BUILTIN_ACTIVITY_PHASES
+    transitions_map = TICKET_TRANSITIONS if item_type == "ticket" else ACTIVITY_TRANSITIONS
+
+    row = (
+        TicketWorkflowStatus.objects.filter(
+            company=company, item_type=item_type, deleted_at__isnull=True, active=True,
+        )
+        .filter(name=status_name)
+        .first()
+    )
+    if row:
+        phase = row.phase or builtin_phases.get(status_name, "")
+        perms = dict(PHASE_DEFAULTS.get(phase, {}))
+        perms.update({k: v for k, v in (row.permissions or {}).items() if k in ALL_PERMS})
+        reqs = {k: v for k, v in (row.requirements or {}).items() if k in ALL_REQS}
+        is_final = bool(row.is_final or phase == "final")
+        if is_final:
+            # Regras críticas: status final nunca libera edição operacional/sprint
+            for k in ("allows_edit", "allows_assignment", "allows_priority_change",
+                      "allows_send_to_sprint", "allows_start_work", "allows_finish"):
+                perms[k] = False
+            perms["allows_reopen"] = True
+        return {
+            "found": True,
+            "custom": True,
+            "is_final": is_final,
+            "phase": phase,
+            "permissions": {k: bool(perms.get(k)) for k in ALL_PERMS},
+            "requirements": {k: bool(reqs.get(k)) for k in ALL_REQS},
+            "transitions": list(row.next_statuses or []),
+        }
+
+    if status_name in builtin_phases:
+        phase = builtin_phases[status_name]
+        perms = dict(PHASE_DEFAULTS.get(phase, {}))
+        return {
+            "found": True,
+            "custom": False,
+            "is_final": phase == "final",
+            "phase": phase,
+            "permissions": {k: bool(perms.get(k)) for k in ALL_PERMS},
+            "requirements": {},
+            "transitions": sorted(transitions_map.get(status_name, set())),
+        }
+
+    return {"found": False, "custom": False, "is_final": False, "phase": "",
+            "permissions": {}, "requirements": {}, "transitions": []}
