@@ -170,9 +170,29 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
         # Planejar = vincular à sprint e sair do Backlog (status Backlog → A fazer)
         if activity and sprint:
             activity.sprint = sprint
+            update_fields = ["sprint", "status", "updated_at"]
             if activity.status == "Backlog":
                 activity.status = "A fazer"
-            activity.save(update_fields=["sprint", "status", "updated_at"])
+            # Vencimento = prazo para terminar. Ao entrar na sprint, herda o fim da
+            # sprint se ainda não houver prazo (pode ser editado depois; toda mudança
+            # é registrada na auditoria).
+            previous_due = activity.due_at
+            if not activity.due_at and sprint.end_at:
+                activity.due_at = sprint.end_at
+                update_fields.append("due_at")
+            activity.save(update_fields=update_fields)
+            if activity.due_at != previous_due:
+                from common.audit import record_audit
+                record_audit(
+                    action="activity.due_at_set",
+                    actor=self.request.user,
+                    instance=activity,
+                    entity_type="activity",
+                    request=self.request,
+                    description=f"Vencimento definido pelo planejamento na sprint '{sprint.name}': {activity.due_at}.",
+                    origin="sprints",
+                    changes=[{"field": "due_at", "old": str(previous_due) if previous_due else None, "new": str(activity.due_at)}],
+                )
 
     def perform_update(self, serializer):
         if not user_has_any_permission(self.request.user, ["sprints.edit", "sprints.manage"]):

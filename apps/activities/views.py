@@ -67,11 +67,25 @@ class ActivityViewSet(CompanyScopedModelViewSet):
         validate_activity_update(serializer.instance, self.request.data)
         instance = serializer.instance
         data = self.request.data
+        previous_due = instance.due_at
         # Planejar via PATCH direto: atividade em Backlog vinculada a sprint vai para 'A fazer'
         if data.get("sprint") and instance.status == "Backlog" and not data.get("status"):
-            serializer.save(status="A fazer")
+            activity = serializer.save(status="A fazer")
         else:
-            serializer.save()
+            activity = serializer.save()
+        # Vencimento = prazo para terminar; toda alteração fica registrada na auditoria.
+        if "due_at" in data and activity.due_at != previous_due:
+            from common.audit import record_audit
+            record_audit(
+                action="activity.due_at_changed",
+                actor=self.request.user,
+                instance=activity,
+                entity_type="activity",
+                request=self.request,
+                description=f"Vencimento alterado de '{previous_due or '—'}' para '{activity.due_at or '—'}'.",
+                origin="activities",
+                changes=[{"field": "due_at", "old": str(previous_due) if previous_due else None, "new": str(activity.due_at) if activity.due_at else None}],
+            )
 
     def perform_destroy(self, instance):
         if not user_has_permission(self.request.user, "activities.delete"):

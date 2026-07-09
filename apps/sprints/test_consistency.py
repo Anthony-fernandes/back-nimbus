@@ -71,6 +71,54 @@ class SprintItemsTest(TestCase):
         self.assertIn("Em revisão", cols)
 
 
+class DueDateOnPlanningTest(TestCase):
+    def test_planning_sets_due_at_and_logs(self):
+        """Planejar na sprint herda o vencimento (fim da sprint) e registra auditoria.
+
+        Exercita a view diretamente (sem passar pela URLconf) para não depender
+        de middlewares opcionais do ambiente.
+        """
+        from datetime import date
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.audit.models import AuditLog
+        from apps.sprints.models import SprintActivityPlan
+        from apps.sprints.views import SprintActivityPlanViewSet
+
+        company = Company.objects.create(name="Due Co")
+        user = User.objects.create_user(
+            username="due_admin", password="x", company=company, role="ADMIN"
+        )
+        client_obj = Client.objects.create(company=company, name="C")
+        project = Project.objects.create(company=company, client=client_obj, name="P")
+        sprint = Sprint.objects.create(
+            company=company, name="S", status="Planejada", end_at=date(2026, 5, 8)
+        )
+        activity = Activity.objects.create(
+            company=company, project=project, title="A", status="Backlog"
+        )
+
+        factory = APIRequestFactory()
+        request = factory.post("/api/sprint-activity-plans/", {
+            "sprint": str(sprint.id),
+            "activity": str(activity.id),
+        })
+        force_authenticate(request, user=user)
+
+        view = SprintActivityPlanViewSet.as_view({"post": "create"})
+        response = view(request)
+        self.assertIn(response.status_code, [200, 201])
+
+        activity.refresh_from_db()
+        self.assertEqual(str(activity.due_at), "2026-05-08")
+        self.assertEqual(activity.status, "A fazer")
+        self.assertEqual(SprintActivityPlan.objects.filter(sprint=sprint, activity=activity).count(), 1)
+        self.assertTrue(
+            AuditLog.objects.filter(
+                entity_type="activity", entity_id=str(activity.id), action="activity.due_at_set"
+            ).exists()
+        )
+
+
 class ActiveSprintRuleTest(TestCase):
     def setUp(self):
         self.company = Company.objects.create(name="Sprint Co")
