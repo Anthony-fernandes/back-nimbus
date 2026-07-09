@@ -42,7 +42,7 @@ class SprintViewSet(CompanyScopedModelViewSet):
             delivered = Activity.objects.filter(
                 sprint=sprint,
                 deleted_at__isnull=True,
-                status="Concluido",
+                status__in=["Concluída", "Concluido", "Concluído", "Done"],
             ).aggregate(pts=Sum("story_points"))["pts"] or 0
 
             result.append({
@@ -136,6 +136,8 @@ class SprintActivityPlanViewSet(CompanyScopedModelViewSet):
 
         activity = serializer.validated_data.get("activity")
         sprint = serializer.validated_data.get("sprint")
+        if sprint and sprint.status in ("Concluída", "Concluido", "Finalizada"):
+            raise ValidationError({"detail": "Não é possível planejar itens em uma sprint já finalizada."})
         if activity:
             # Elegibilidade: builtin usa a lista oficial (Backlog/A fazer/Em progresso/Bloqueado);
             # status customizados seguem as permissões configuradas no workflow.
@@ -214,6 +216,8 @@ class SprintTicketPlanViewSet(CompanyScopedModelViewSet):
 
         ticket = serializer.validated_data.get("ticket")
         sprint = serializer.validated_data.get("sprint")
+        if sprint and sprint.status in ("Concluída", "Concluido", "Finalizada"):
+            raise ValidationError({"detail": "Não é possível planejar itens em uma sprint já finalizada."})
         if ticket:
             rule = resolve_status_rule(ticket.company, "ticket", ticket.status)
             allowed = (

@@ -84,7 +84,12 @@ def validate_ticket_update(ticket, data: dict):
         target = resolve_status_rule(ticket.company, "ticket", new_status)
         if target["found"] and target["requirements"].get("requires_reason") and not data.get("status_change_reason"):
             _err(f"O status '{new_status}' exige um motivo para a transição.")
-        if target["found"] and target["requirements"].get("requires_assignee") and not (
+        # Exigir técnico: por requirement configurado OU regra crítica builtin
+        # (chamado não pode entrar em atendimento sem responsável).
+        needs_assignee = target["found"] and target["requirements"].get("requires_assignee")
+        if new_status == "Em atendimento":
+            needs_assignee = True
+        if needs_assignee and not (
             data.get("responsible_technician") or ticket.responsible_technician_id
         ):
             _err(f"Defina um técnico responsável antes de mover para '{new_status}'.")
