@@ -17,7 +17,7 @@ from .views import (
 )
 
 router = DefaultRouter()
-router.register("", TicketViewSet, basename="tickets")
+# Sub-recursos ANTES do catch-all "" (senão TicketViewSet captura "ticket-templates" como pk).
 router.register("ticket-templates", TicketTemplateViewSet, basename="ticket-template")
 router.register("custom-fields", TicketCustomFieldViewSet, basename="ticket-custom-field")
 router.register("sla-policies", SLAPolicyViewSet, basename="sla-policy")
@@ -27,6 +27,7 @@ router.register("business-hours", BusinessHoursViewSet, basename="business-hours
 router.register("holidays", CompanyHolidayViewSet, basename="company-holiday")
 router.register("automation-rules", TicketAutomationRuleViewSet, basename="automation-rules")
 router.register("mailboxes", InboundMailboxViewSet, basename="mailboxes")
+router.register("", TicketViewSet, basename="tickets")
 
 urlpatterns = router.urls + [
     path("reports/", TicketReportsView.as_view(), name="ticket-reports"),
