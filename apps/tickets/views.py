@@ -242,6 +242,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
             "priority": ticket.priority,
             "category": ticket.category,
             "responsible_technician_id": ticket.responsible_technician_id,
+            "due_at": ticket.due_at,
         }
         instance = serializer.instance
         # Inject actor so the signal can record who changed the status
@@ -263,6 +264,18 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 updated.save(update_fields=["sla_due_at", "updated_at"])
             except Exception as exc:
                 logger.exception("Failed to recompute SLA for ticket %s: %s", updated.id, exc)
+        # Vencimento (prazo para terminar) = data; toda alteração fica registrada.
+        if "due_at" in self.request.data and updated.due_at != previous["due_at"]:
+            record_audit(
+                action="ticket.due_at_changed",
+                actor=self.request.user,
+                instance=updated,
+                entity_type="ticket",
+                request=self.request,
+                description=f"Vencimento alterado de '{previous['due_at'] or '—'}' para '{updated.due_at or '—'}'.",
+                origin="tickets",
+                changes=[{"field": "due_at", "old": str(previous["due_at"]) if previous["due_at"] else None, "new": str(updated.due_at) if updated.due_at else None}],
+            )
         self._post_update(updated, previous)
 
     def perform_destroy(self, instance):

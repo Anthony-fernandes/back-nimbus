@@ -119,6 +119,40 @@ class DueDateOnPlanningTest(TestCase):
         )
 
 
+class TicketDueDateLogTest(TestCase):
+    def test_ticket_due_at_change_is_logged(self):
+        from datetime import date
+        from rest_framework.test import APIRequestFactory, force_authenticate
+        from apps.audit.models import AuditLog
+        from apps.tickets.models import Ticket
+        from apps.tickets.views import TicketViewSet
+
+        company = Company.objects.create(name="Tk Co")
+        user = User.objects.create_user(
+            username="tk_admin", password="x", company=company, role="ADMIN"
+        )
+        client_obj = Client.objects.create(company=company, name="C")
+        ticket = Ticket.objects.create(
+            company=company, client=client_obj, title="T", status="Aberto",
+            priority="Media", requester="t", requester_user=user,
+        )
+
+        factory = APIRequestFactory()
+        request = factory.patch(f"/api/tickets/{ticket.id}/", {"due_at": "2026-05-08"})
+        force_authenticate(request, user=user)
+        view = TicketViewSet.as_view({"patch": "partial_update"})
+        response = view(request, pk=str(ticket.id))
+        self.assertIn(response.status_code, [200, 202])
+
+        ticket.refresh_from_db()
+        self.assertEqual(str(ticket.due_at), "2026-05-08")
+        self.assertTrue(
+            AuditLog.objects.filter(
+                entity_type="ticket", entity_id=str(ticket.id), action="ticket.due_at_changed"
+            ).exists()
+        )
+
+
 class ActiveSprintRuleTest(TestCase):
     def setUp(self):
         self.company = Company.objects.create(name="Sprint Co")
