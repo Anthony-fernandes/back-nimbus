@@ -56,6 +56,20 @@ class SprintViewSet(CompanyScopedModelViewSet):
 
         return Response(result)
 
+    @action(detail=False, methods=["get"], url_path="my-active")
+    def my_active(self, request):
+        """Sprint ativa do usuário logado (a que ele participa e está 'Em andamento').
+
+        Fonte para o filtro padrão do Kanban geral. Retorna {sprint: null} se o
+        técnico não estiver vinculado a nenhuma sprint ativa.
+        """
+        from common.active_sprint import user_active_sprint
+
+        sprint = user_active_sprint(request.user)
+        if not sprint:
+            return Response({"sprint": None})
+        return Response({"sprint": SprintSerializer(sprint, context={"request": request}).data})
+
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
@@ -267,6 +281,21 @@ class SprintParticipantViewSet(CompanyScopedModelViewSet):
             qs = qs.filter(sprint_id=sprint_id)
         return qs
 
+    def perform_create(self, serializer):
+        # Regra: um técnico participa de no máximo UMA sprint ativa.
+        from rest_framework.exceptions import ValidationError
+        from common.active_sprint import other_active_sprint_for_user
+
+        sprint = serializer.validated_data.get("sprint")
+        user = serializer.validated_data.get("user")
+        if sprint and user and getattr(sprint, "status", "") == "Em andamento":
+            other = other_active_sprint_for_user(user, self.request.user.company, exclude_sprint_id=sprint.id)
+            if other:
+                raise ValidationError(
+                    {"user": [f"Este técnico já participa da sprint ativa '{other.name}'. Um técnico só pode estar em uma sprint ativa por vez."]}
+                )
+        super().perform_create(serializer)
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Sprint Retrospective & Review
@@ -348,6 +377,25 @@ def start_sprint(request, pk):
             },
             status=409,
         )
+
+    # Regra: um técnico só pode estar em UMA sprint ativa. Bloqueia iniciar se algum
+    # participante já estiver em outra sprint ativa (a menos que force=true).
+    if not request.data.get("force"):
+        from common.active_sprint import other_active_sprint_for_user
+
+        blocked = []
+        for part in sprint.participants.filter(deleted_at__isnull=True).select_related("user"):
+            other = other_active_sprint_for_user(part.user, request.user.company, exclude_sprint_id=sprint.id)
+            if other:
+                blocked.append(f"{part.user.full_name_or_username} (em '{other.name}')")
+        if blocked:
+            return _R(
+                {
+                    "detail": "Não é possível iniciar: técnicos já em outra sprint ativa — " + "; ".join(blocked) + ". Encerre a outra sprint ou envie force=true.",
+                    "blocked_participants": blocked,
+                },
+                status=409,
+            )
 
     from django.utils import timezone as dj_tz
 
