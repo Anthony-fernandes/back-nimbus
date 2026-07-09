@@ -44,6 +44,14 @@ class ForumTopic(BaseModel):
     is_locked = models.BooleanField(default=False)
     views_count = models.IntegerField(default=0)
     replies_count = models.IntegerField(default=0)
+    # Vínculo quando o tópico é convertido em chamado (Fórum → Chamado).
+    converted_ticket = models.ForeignKey(
+        "tickets.Ticket",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_forum_topics",
+    )
     best_answer = models.ForeignKey(
         "ForumReply",
         on_delete=models.SET_NULL,

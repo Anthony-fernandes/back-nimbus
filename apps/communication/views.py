@@ -239,6 +239,52 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
         from apps.knowledge.serializers import KnowledgeArticleSerializer
         return Response(KnowledgeArticleSerializer(article).data, status=201)
 
+    @action(detail=True, methods=["post"], url_path="convert-to-ticket")
+    def convert_to_ticket(self, request, pk=None):
+        """Fórum → Chamado: cria um chamado a partir do tópico e vincula os dois."""
+        from rest_framework.exceptions import PermissionDenied
+        from apps.tickets.models import Ticket, TicketComment
+        from apps.tickets.serializers import TicketSerializer
+
+        topic = self.get_object()
+        user = request.user
+        if _is_client(user):
+            raise PermissionDenied("Somente moderadores/atendentes podem converter um tópico em chamado.")
+        if topic.converted_ticket_id and not request.data.get("force"):
+            return Response(
+                {"detail": "Este tópico já foi convertido em chamado.",
+                 "ticket": TicketSerializer(topic.converted_ticket).data},
+                status=200,
+            )
+
+        replies = list(topic.replies.order_by("created_at").select_related("author"))
+        summary = "\n\n".join(
+            f"{(r.author.get_full_name() if r.author else 'Anônimo')}: {r.content}"
+            for r in replies if getattr(r, "content", "")
+        )
+        ticket = Ticket.objects.create(
+            company=user.company,
+            title=topic.title,
+            description=topic.content or "Chamado aberto a partir de um tópico do fórum.",
+            requester=(topic.author.get_full_name() if topic.author else ""),
+            requester_user=topic.author,
+            responsible_technician=user,
+            source="portal",
+            priority=request.data.get("priority") or "Media",
+            category=request.data.get("category") or "Atendimento",
+        )
+        if summary:
+            TicketComment.objects.create(
+                company=user.company, ticket=ticket, author=user,
+                author_name=user.get_full_name(),
+                body=f"Respostas do tópico do fórum:\n\n{summary}",
+                note_type="internal",
+            )
+        topic.converted_ticket = ticket
+        topic.is_locked = True
+        topic.save(update_fields=["converted_ticket", "is_locked", "updated_at"])
+        return Response(TicketSerializer(ticket).data, status=201)
+
     @action(detail=True, methods=["post"], url_path="toggle-like")
     def toggle_like(self, request, pk=None):
         topic = self.get_object()
@@ -397,6 +443,55 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
         conversation.last_message_at = timezone.now()
         conversation.save(update_fields=["last_message_at", "updated_at"])
         return Response(ChatMessageSerializer(message, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"], url_path="convert-to-ticket")
+    def convert_to_ticket(self, request, pk=None):
+        """Chat → Chamado: cria um chamado a partir da conversa e vincula o histórico."""
+        from rest_framework.exceptions import PermissionDenied
+        from apps.tickets.models import Ticket, TicketComment
+        from apps.tickets.serializers import TicketSerializer
+
+        conversation = self.get_object()
+        user = request.user
+        if _is_client(user):
+            raise PermissionDenied("Somente atendentes podem converter uma conversa em chamado.")
+
+        # Não duplicar: se já há chamado vinculado, retorna o existente (a menos de force).
+        if conversation.ticket_id and not request.data.get("force"):
+            return Response(
+                {"detail": "Esta conversa já possui um chamado vinculado.",
+                 "ticket": TicketSerializer(conversation.ticket).data},
+                status=200,
+            )
+
+        messages = list(conversation.messages.order_by("created_at").select_related("author"))
+        transcript = "\n".join(
+            f"[{m.created_at:%d/%m %H:%M}] {(m.author.get_full_name() if m.author else 'Sistema')}: {m.content}"
+            for m in messages if getattr(m, "content", "")
+        )
+        title = request.data.get("title") or (conversation.name or (messages[0].content[:80] if messages else "Atendimento via chat"))
+        ticket = Ticket.objects.create(
+            company=user.company,
+            client=conversation.client,
+            title=title,
+            description=request.data.get("description") or "Chamado aberto a partir de uma conversa de chat.",
+            requester=(conversation.created_by.get_full_name() if conversation.created_by else ""),
+            requester_user=conversation.created_by,
+            responsible_technician=user,
+            source="chat",
+            priority=request.data.get("priority") or "Media",
+            category=request.data.get("category") or "Atendimento",
+        )
+        if transcript:
+            TicketComment.objects.create(
+                company=user.company, ticket=ticket, author=user,
+                author_name=user.get_full_name(),
+                body=f"Histórico da conversa de chat:\n\n{transcript}",
+                note_type="internal",
+            )
+        conversation.ticket = ticket
+        conversation.save(update_fields=["ticket", "updated_at"])
+        return Response(TicketSerializer(ticket).data, status=201)
 
     @action(detail=True, methods=["post"], url_path="archive")
     def archive(self, request, pk=None):
