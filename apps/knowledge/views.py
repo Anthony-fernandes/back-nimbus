@@ -9,8 +9,18 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from common.access import normalize_user_role, user_has_any_permission
 from common.viewsets import CompanyScopedModelViewSet
 from .models import ArticleAttachment, ArticleRating, ArticleVersion, KnowledgeArticle, KnowledgeCategory, KnowledgeInternalComment, KnowledgeTag
+
+
+def _is_client(user) -> bool:
+    return normalize_user_role(getattr(user, "role", None)) == "CLIENT"
+
+
+def _can_manage_knowledge(user) -> bool:
+    return user_has_any_permission(user, ["knowledge.manage", "knowledge.edit", "settings.edit"]) or \
+        normalize_user_role(getattr(user, "role", None)) == "ADMIN"
 from .serializers import (
     ArticleAttachmentSerializer,
     ArticleRatingSerializer,
@@ -49,6 +59,9 @@ class KnowledgeArticleViewSet(CompanyScopedModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
+        # Isolamento por papel: clientes só enxergam artigos PUBLICADOS e PÚBLICOS.
+        if _is_client(self.request.user):
+            qs = qs.filter(status="PUBLISHED", visibility="PUBLIC")
         q = self.request.query_params.get('q', '').strip()
         if q:
             try:
@@ -74,9 +87,15 @@ class KnowledgeArticleViewSet(CompanyScopedModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        if _is_client(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Clientes não podem criar artigos da base de conhecimento.")
         serializer.save(company=self.request.user.company, author=self.request.user)
 
     def perform_update(self, serializer):
+        if _is_client(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Clientes não podem editar artigos da base de conhecimento.")
         article = self.get_object()
         # Save a version snapshot before updating
         last_version = article.versions.order_by("-version").first()
@@ -213,7 +232,13 @@ class KnowledgeInternalCommentViewSet(CompanyScopedModelViewSet):
         company = getattr(user, "company", None)
         if not company:
             return self.queryset.none()
+        # Comentários internos nunca são visíveis a clientes.
+        if _is_client(user):
+            return KnowledgeInternalComment.objects.none()
         return KnowledgeInternalComment.objects.filter(article__company=company)
 
     def perform_create(self, serializer):
+        if _is_client(self.request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Clientes não podem comentar internamente.")
         serializer.save(author=self.request.user)

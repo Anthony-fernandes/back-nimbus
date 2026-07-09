@@ -657,10 +657,14 @@ class ContentFlagViewSet(CompanyScopedModelViewSet):
     permission_classes = [IsAuthenticated]
     filterset_fields = ["content_type", "reviewed"]
     ordering_fields = "__all__"
-    company_field_name = None  # no direct company field
+    company_field_name = None  # sem FK direto de company; escopamos via autor
 
     def get_queryset(self):
-        return ContentFlag.objects.all()
+        # Isolamento multi-tenant: só flags criadas por usuários da mesma empresa.
+        company = getattr(self.request.user, "company", None)
+        if not company:
+            return ContentFlag.objects.none()
+        return ContentFlag.objects.filter(author__company=company)
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
