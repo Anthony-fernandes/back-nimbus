@@ -66,6 +66,7 @@ class TicketViewSet(CompanyScopedModelViewSet):
         "client",
         "project",
         "sprint",
+        "team_ref",
         "priority",
         "status",
         "impact",

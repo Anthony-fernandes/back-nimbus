@@ -126,7 +126,16 @@ class Ticket(BaseModel):
     urgency = models.CharField(max_length=30, choices=URGENCY_CHOICES, default="Média")
     status = models.CharField(max_length=40, choices=STATUS, default="Aberto")
     technicians = models.ManyToManyField(User, blank=True, related_name="tickets")
+    # Campo legado (texto livre). Preferir team_ref (FK) daqui em diante.
     team = models.CharField(max_length=120, blank=True, default="")
+    # Equipe canônica: FK para teams.Team (fonte única do conceito de equipe).
+    team_ref = models.ForeignKey(
+        "teams.Team",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tickets",
+    )
     sla = models.CharField(max_length=30, blank=True, default="8h")
     sla_due_at = models.DateTimeField(null=True, blank=True)
     opened_at = models.DateField(null=True, blank=True)

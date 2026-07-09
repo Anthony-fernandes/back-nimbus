@@ -64,6 +64,7 @@ class TicketSerializer(serializers.ModelSerializer):
     organization_id = serializers.CharField(source="client_id", read_only=True, default="")
     organization_name = serializers.CharField(source="client.name", read_only=True, default="")
     department_name = serializers.CharField(source="department.name", read_only=True, default="")
+    team_ref_name = serializers.CharField(source="team_ref.name", read_only=True, default="")
     project_name = serializers.CharField(source="project.name", read_only=True)
     sprint_name = serializers.CharField(source="sprint.name", read_only=True)
     requester_user_name = serializers.CharField(
@@ -126,6 +127,8 @@ class TicketSerializer(serializers.ModelSerializer):
             "technicians",
             "technician_names",
             "team",
+            "team_ref",
+            "team_ref_name",
             "sla",
             "sla_due_at",
             "opened_at",
