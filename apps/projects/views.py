@@ -60,6 +60,18 @@ class ProjectViewSet(CompanyScopedModelViewSet):
     def perform_update(self, serializer):
         if not user_has_any_permission(self.request.user, ["projects.edit", "projects.manage"]):
             raise PermissionDenied("Seu perfil nao pode alterar projetos.")
+        # Bloqueia concluir projeto sem base de cálculo ou com itens pendentes.
+        new_status = self.request.data.get("status")
+        if new_status in ("Concluido", "Concluído"):
+            from rest_framework.exceptions import ValidationError
+            from common.project_metrics import compute_project_metrics
+            m = compute_project_metrics(serializer.instance)
+            if not m["has_calculation_basis"]:
+                raise ValidationError({"detail": "Não é possível concluir este projeto porque ele "
+                                       "não possui atividades ou etapas cadastradas para validar a conclusão."})
+            if not m["can_complete"]:
+                raise ValidationError({"detail": "Este projeto ainda possui itens pendentes. Conclua ou "
+                                       "remova os itens antes de finalizar o projeto."})
         serializer.save()
 
     def perform_destroy(self, instance):

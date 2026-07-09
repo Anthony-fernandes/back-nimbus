@@ -47,6 +47,11 @@ class ProjectSerializer(serializers.ModelSerializer):
     )
     team_names = serializers.SerializerMethodField()
     member_links = ProjectMemberSerializer(many=True, required=False)
+    # Métricas calculadas — fonte ÚNICA (mesma para lista, detalhe, dashboard).
+    progress = serializers.SerializerMethodField()
+    health = serializers.SerializerMethodField()
+    calculated_status = serializers.SerializerMethodField()
+    metrics = serializers.SerializerMethodField()
 
     class Meta:
         model = Project
@@ -64,6 +69,7 @@ class ProjectSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "status",
+            "calculated_status",
             "owner",
             "owner_name",
             "leader_name",
@@ -75,6 +81,8 @@ class ProjectSerializer(serializers.ModelSerializer):
             "budget",
             "real_cost",
             "progress",
+            "health",
+            "metrics",
             "start_at",
             "due_at",
             "tags",
@@ -83,6 +91,25 @@ class ProjectSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         extra_kwargs = {"company": {"required": False, "read_only": True}}
+
+    def _metrics(self, obj):
+        # cache por instância para não recalcular em cada método
+        if not hasattr(obj, "_metrics_cache"):
+            from common.project_metrics import compute_project_metrics
+            obj._metrics_cache = compute_project_metrics(obj)
+        return obj._metrics_cache
+
+    def get_progress(self, obj):
+        return self._metrics(obj)["progress"]
+
+    def get_health(self, obj):
+        return self._metrics(obj)["health"]
+
+    def get_calculated_status(self, obj):
+        return self._metrics(obj)["calculated_status"]
+
+    def get_metrics(self, obj):
+        return self._metrics(obj)
 
     def get_team_names(self, obj):
         return [user.full_name_or_username for user in obj.team.all()]
