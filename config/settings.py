@@ -280,6 +280,11 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "SORT_OPERATIONS": True,
+    # Agrupa os endpoints por MÓDULO (tickets, sprints, ...) em vez de tudo sob "api":
+    # remove o prefixo /api/ (e /api/v1/) para a tag virar o segmento seguinte.
+    "SCHEMA_PATH_PREFIX": r"/api(/v1)?",
+    # Remove as rotas duplicadas /api/v1/ (mantém a família /api/).
+    "PREPROCESSING_HOOKS": ["config.spectacular_hooks.exclude_v1_duplicates"],
     # Ordenação e agrupamento das tags (módulos) na documentação
     "TAGS": [
         {"name": "auth", "description": "Autenticação, JWT, MFA e sessão"},
