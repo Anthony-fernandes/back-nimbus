@@ -484,6 +484,20 @@ def close_sprint(request, pk):
 
 @api_view(["GET"])
 @_pc([_IA])
+def sprint_items(request, pk):
+    """Fonte ÚNICA dos itens da sprint (Planejamento = Kanban = indicadores)."""
+    from apps.sprints.models import Sprint
+    from common.sprint_items import build_sprint_items
+
+    try:
+        sprint = Sprint.objects.get(pk=pk, company=request.user.company)
+    except Sprint.DoesNotExist:
+        return _R({"detail": "Sprint não encontrada."}, status=404)
+    return _R(build_sprint_items(sprint))
+
+
+@api_view(["GET"])
+@_pc([_IA])
 def sprint_metrics(request, pk):
     """Agregados da sprint para indicadores configuráveis do frontend."""
     from apps.sprints.models import Sprint, SprintActivityPlan, SprintTicketPlan

@@ -11,6 +11,7 @@ from .views import (
     sprint_velocity,
     start_sprint,
     sprint_metrics,
+    sprint_items,
 )
 
 router = DefaultRouter()
@@ -24,5 +25,6 @@ urlpatterns = router.urls + [
     path("<uuid:pk>/close/", close_sprint, name="sprint-close"),
     path("<uuid:pk>/start/", start_sprint, name="sprint-start"),
     path("<uuid:pk>/metrics/", sprint_metrics, name="sprint-metrics"),
+    path("<uuid:pk>/items/", sprint_items, name="sprint-items"),
     path("velocity/", sprint_velocity, name="sprint-velocity"),
 ]
