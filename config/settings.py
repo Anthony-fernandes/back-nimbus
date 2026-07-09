@@ -113,8 +113,6 @@ INSTALLED_APPS = [
     "apps.search",
     "apps.reports",
     "apps.webhooks",
-    "apps.forum",
-    "apps.doubts",
     "apps.teams",
     "django_celery_beat",
 ]

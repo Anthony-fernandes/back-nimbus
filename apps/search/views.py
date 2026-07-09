@@ -7,14 +7,15 @@ from apps.tickets.models import Ticket
 from apps.knowledge.models import KnowledgeArticle
 from apps.projects.models import Project
 
+# Fórum e Dúvidas moram em apps.communication (as apps forum/doubts eram duplicatas mortas).
 try:
-    from apps.forum.models import ForumTopic
+    from apps.communication.models import ForumTopic
     _has_forum = True
 except ImportError:
     _has_forum = False
 
 try:
-    from apps.doubts.models import DoubtsQuestion
+    from apps.communication.models import DoubtsQuestion
     _has_doubts = True
 except ImportError:
     _has_doubts = False
