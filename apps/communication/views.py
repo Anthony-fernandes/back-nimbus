@@ -8,6 +8,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.viewsets import GenericViewSet
 
+from common.access import normalize_user_role
 from common.viewsets import CompanyScopedModelViewSet
 from .models import (
     ChatConversation,
@@ -51,6 +52,14 @@ from .serializers import (
     ForumUserReputationSerializer,
     UserBadgeSerializer,
 )
+
+
+def _is_client(user) -> bool:
+    return normalize_user_role(getattr(user, "role", None)) == "CLIENT"
+
+
+# Visibilidades de fórum que um cliente pode enxergar (a interna nunca).
+CLIENT_FORUM_VISIBILITY = ["publica_cliente", "todos"]
 
 
 def _notify_forum(recipient, actor, title, message, link, event, company):
@@ -147,7 +156,18 @@ class ForumTopicViewSet(CompanyScopedModelViewSet):
     search_fields = ["title", "content"]
     ordering_fields = "__all__"
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Segurança: clientes nunca veem tópicos internos (nem via listagem nem por URL direta).
+        if _is_client(self.request.user):
+            qs = qs.filter(visibility__in=CLIENT_FORUM_VISIBILITY)
+        return qs
+
     def perform_create(self, serializer):
+        # Clientes não criam tópicos internos.
+        if _is_client(self.request.user) and serializer.validated_data.get("visibility") == "interna":
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied("Clientes não podem criar tópicos internos.")
         topic = serializer.save(company=self.request.user.company, author=self.request.user)
         _notify_mentions(topic.content, self.request.user, self.request.user.company, f"/forum/{topic.id}", "forum_topic", str(topic.id))
 
@@ -275,7 +295,10 @@ class ForumReplyViewSet(CompanyScopedModelViewSet):
         company = getattr(user, "company", None)
         if not company:
             return self.queryset.none()
-        return self.queryset.filter(topic__company=company)
+        qs = self.queryset.filter(topic__company=company)
+        if _is_client(user):
+            qs = qs.filter(topic__visibility__in=CLIENT_FORUM_VISIBILITY)
+        return qs
 
     def perform_create(self, serializer):
         reply = serializer.save(author=self.request.user)
@@ -691,7 +714,10 @@ class ForumTopicEditViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, Ge
         company = getattr(user, "company", None)
         if not company:
             return self.queryset.none()
-        return self.queryset.filter(topic__company=company)
+        qs = self.queryset.filter(topic__company=company)
+        if _is_client(user):
+            qs = qs.filter(topic__visibility__in=CLIENT_FORUM_VISIBILITY)
+        return qs
 
 
 class ForumReplyEditViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, GenericViewSet):
