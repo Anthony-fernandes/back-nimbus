@@ -8,9 +8,41 @@ class SprintSerializer(serializers.ModelSerializer):
     team_color = serializers.CharField(source="team.color", read_only=True, default="")
     lead_name = serializers.CharField(source="lead.full_name_or_username", read_only=True)
     total_capacity = serializers.SerializerMethodField(read_only=True)
+    progress_pct = serializers.SerializerMethodField(read_only=True)
+    points_planned = serializers.SerializerMethodField(read_only=True)
+    points_done = serializers.SerializerMethodField(read_only=True)
 
     def get_total_capacity(self, obj):
         return obj.total_capacity
+
+    _DONE = ("Concluída", "Concluido", "Concluído", "Done", "Finalizado")
+
+    def _plans(self, obj):
+        if not hasattr(obj, "_plan_cache"):
+            a = list(obj.activity_plans.filter(deleted_at__isnull=True).select_related("activity"))
+            t = list(obj.ticket_plans.filter(deleted_at__isnull=True).select_related("ticket"))
+            obj._plan_cache = (a, t)
+        return obj._plan_cache
+
+    def get_progress_pct(self, obj):
+        a, t = self._plans(obj)
+        total = len(a) + len(t)
+        if not total:
+            return 0
+        done = sum(1 for p in a if p.activity and p.activity.status in self._DONE)
+        done += sum(1 for p in t if p.ticket and p.ticket.status in self._DONE)
+        return round(done / total * 100)
+
+    def get_points_planned(self, obj):
+        a, t = self._plans(obj)
+        return sum(p.story_points or 0 for p in a + t)
+
+    def get_points_done(self, obj):
+        a, t = self._plans(obj)
+        return (
+            sum(p.story_points or 0 for p in a if p.activity and p.activity.status in self._DONE)
+            + sum(p.story_points or 0 for p in t if p.ticket and p.ticket.status in self._DONE)
+        )
 
     class Meta:
         model = Sprint
