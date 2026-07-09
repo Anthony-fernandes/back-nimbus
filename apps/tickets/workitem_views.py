@@ -1,4 +1,5 @@
 """Endpoint unificado de ações disponíveis por item/status (workflow dinâmico)."""
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -23,6 +24,17 @@ ACTION_LABELS = {
 }
 
 
+@extend_schema(
+    tags=["work-items"],
+    summary="Ações disponíveis por item e status (workflow dinâmico)",
+    description="Retorna as ações permitidas/bloqueadas, transições e exigências do "
+    "status atual de um chamado ou atividade, segundo o workflow configurável.",
+    parameters=[
+        OpenApiParameter("item_type", str, OpenApiParameter.PATH, enum=["ticket", "activity"]),
+        OpenApiParameter("pk", str, OpenApiParameter.PATH, description="UUID do item"),
+    ],
+    responses={200: dict},
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def available_actions(request, item_type, pk):

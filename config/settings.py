@@ -254,9 +254,56 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Stratos Suite API",
-    "DESCRIPTION": "API REST para gestão de clientes, projetos, chamados, sprints, atividades e dashboard.",
+    "TITLE": "NimbusDesk API",
+    "DESCRIPTION": (
+        "API REST do **NimbusDesk** — plataforma de helpdesk, gestão de projetos e "
+        "autoatendimento.\n\n"
+        "## Autenticação\n"
+        "A API usa **JWT (Bearer token)**. Obtenha o token em `POST /api/auth/login/` "
+        "com `username` e `password` e envie no cabeçalho:\n\n"
+        "```\nAuthorization: Bearer <access_token>\n```\n\n"
+        "Renove o token em `POST /api/auth/refresh/`. No Swagger, use o botão "
+        "**Authorize** e informe `Bearer <access_token>`.\n\n"
+        "## Multi-tenant\n"
+        "Todos os recursos são isolados por empresa (tenant) e por papel do usuário "
+        "(`ADMIN`, `TECHNICIAN`, `CLIENT`). Clientes só acessam seus próprios dados.\n\n"
+        "## Módulos principais\n"
+        "- **Chamados** (`/api/tickets/`) — helpdesk com workflow configurável\n"
+        "- **Atividades / Projetos / Sprints** (`/api/activities/`, `/api/projects/`, `/api/sprints/`)\n"
+        "- **Backlog** (`/api/backlog/`) — fila de planejamento (itens sem sprint)\n"
+        "- **Autoatendimento** — Base de Conhecimento, Fórum, Dúvidas e Chat (`/api/knowledge/`, `/api/communication/`)\n"
+        "- **Equipes, Clientes, Usuários, Relatórios, SLA, Auditoria**\n"
+    ),
     "VERSION": "1.0.0",
+    "CONTACT": {"name": "Equipe NimbusDesk", "email": "suporte@nimbusdesk.com.br"},
+    "LICENSE": {"name": "Proprietária"},
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    # Ordenação e agrupamento das tags (módulos) na documentação
+    "TAGS": [
+        {"name": "auth", "description": "Autenticação, JWT, MFA e sessão"},
+        {"name": "tickets", "description": "Chamados, comentários, tempo, aprovações e workflow"},
+        {"name": "work-items", "description": "Ações disponíveis por item (available-actions)"},
+        {"name": "activities", "description": "Atividades de projeto, tempo e comentários"},
+        {"name": "backlog", "description": "Fila de planejamento (itens sem sprint)"},
+        {"name": "sprints", "description": "Sprints, planos, participantes, reviews e retrospectivas"},
+        {"name": "projects", "description": "Projetos, membros e custos"},
+        {"name": "teams", "description": "Equipes e membros"},
+        {"name": "clients", "description": "Clientes / organizações"},
+        {"name": "users", "description": "Usuários, departamentos, cargos e permissões"},
+        {"name": "knowledge", "description": "Base de conhecimento"},
+        {"name": "communication", "description": "Fórum, dúvidas e chat de atendimento"},
+        {"name": "reports", "description": "Relatórios e indicadores"},
+        {"name": "notifications", "description": "Notificações e preferências"},
+        {"name": "audit-logs", "description": "Trilha de auditoria"},
+    ],
+    "SWAGGER_UI_SETTINGS": {
+        "deepLinking": True,
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+    },
 }
 
 # Notificacao por e-mail centralizada. Em desenvolvimento usa o backend de
