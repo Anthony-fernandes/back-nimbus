@@ -87,6 +87,16 @@ class ProjectSerializer(serializers.ModelSerializer):
     def get_team_names(self, obj):
         return [user.full_name_or_username for user in obj.team.all()]
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # Clientes não enxergam dados financeiros internos do projeto.
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is not None and normalize_user_role(getattr(user, "role", None)) == "CLIENT":
+            for field in ("budget", "real_cost", "cost_entries", "costs"):
+                data.pop(field, None)
+        return data
+
     def _get_request_company(self):
         request = self.context.get("request")
         return getattr(getattr(request, "user", None), "company", None)
