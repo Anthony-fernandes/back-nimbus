@@ -285,6 +285,11 @@ SPECTACULAR_SETTINGS = {
     "SCHEMA_PATH_PREFIX": r"/api(/v1)?",
     # Remove as rotas duplicadas /api/v1/ (mantém a família /api/).
     "PREPROCESSING_HOOKS": ["config.spectacular_hooks.exclude_v1_duplicates"],
+    # Gera um resumo legível para cada operação (Listar/Criar/Detalhar/... + módulo).
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "config.spectacular_hooks.add_operation_summaries",
+    ],
     # Ordenação e agrupamento das tags (módulos) na documentação.
     # Cada entrada dá o nome e uma descrição curta que aparece no cabeçalho do grupo.
     "TAGS": [
