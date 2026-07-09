@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from apps.users.serializers import UserSerializer
 from common.throttles import LoginRateThrottle
 from .serializers import LoginSerializer
@@ -33,12 +34,25 @@ class LoginView(TokenObtainPairView):
 
         return Response(serializer.validated_data)
 
+@extend_schema(tags=["auth"])
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Dados do usuário logado",
+        description="Retorna o perfil do usuário autenticado (identificado pelo token JWT).",
+        responses=UserSerializer,
+    )
     def get(self, request):
         return Response(UserSerializer(request.user).data)
 
+    @extend_schema(
+        summary="Atualizar meu perfil",
+        description="Atualiza campos do próprio perfil: first_name, last_name, email, "
+        "phone, job_title e theme_config.",
+        request=UserSerializer,
+        responses=UserSerializer,
+    )
     def patch(self, request):
         allowed = {"first_name", "last_name", "email", "phone", "job_title", "theme_config"}
         data = {k: v for k, v in request.data.items() if k in allowed}
@@ -48,6 +62,14 @@ class MeView(APIView):
         user.save(update_fields=list(data.keys()))
         return Response(UserSerializer(user).data)
 
+@extend_schema(
+    tags=["auth"],
+    summary="Alterar senha",
+    description="Troca a senha do usuário logado; exige old_password e new_password.",
+    request={"application/json": {"type": "object", "properties": {
+        "old_password": {"type": "string"}, "new_password": {"type": "string"}}}},
+    responses=OpenApiResponse(description="Senha alterada."),
+)
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -126,6 +148,13 @@ class PasswordResetConfirmView(APIView):
         return Response({"success": True})
 
 
+@extend_schema(
+    tags=["auth"],
+    summary="Encerrar sessão (logout)",
+    description="Invalida o refresh token informado (blacklist).",
+    request={"application/json": {"type": "object", "properties": {"refresh": {"type": "string"}}}},
+    responses=OpenApiResponse(description="Sessão encerrada."),
+)
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
     def post(self, request):
