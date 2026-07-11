@@ -109,7 +109,7 @@ class ContentFlagSerializer(serializers.ModelSerializer):
 
 
 class ChatMessageSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source="author.full_name_or_username", read_only=True)
+    author_name = serializers.CharField(source="author.full_name_or_username", read_only=True, default="Sistema")
     reply_to_preview = serializers.SerializerMethodField()
     reply_to_author = serializers.SerializerMethodField()
     reactions = serializers.SerializerMethodField()
@@ -152,6 +152,12 @@ class ChatMessageSerializer(serializers.ModelSerializer):
 class ChatConversationSerializer(serializers.ModelSerializer):
     participant_names = serializers.SerializerMethodField()
     unread_count = serializers.SerializerMethodField()
+    assigned_to_name = serializers.CharField(source="assigned_to.full_name_or_username", read_only=True, default="")
+    ticket_code = serializers.CharField(source="ticket.code", read_only=True, default="")
+    ticket_title = serializers.CharField(source="ticket.title", read_only=True, default="")
+    client_name = serializers.CharField(source="client.name", read_only=True, default="")
+    created_by_name = serializers.CharField(source="created_by.full_name_or_username", read_only=True, default="")
+    last_message_preview = serializers.SerializerMethodField()
 
     class Meta:
         model = ChatConversation
@@ -169,7 +175,13 @@ class ChatConversationSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         if not request:
             return 0
-        return obj.messages.exclude(read_by=request.user).count()
+        return obj.messages.exclude(read_by=request.user).exclude(author=request.user).count()
+
+    def get_last_message_preview(self, obj):
+        last = obj.messages.order_by("-created_at").first()
+        if not last:
+            return ""
+        return (last.content or last.file_name or "Arquivo")[:80]
 
 
 class DoubtsAnswerSerializer(serializers.ModelSerializer):

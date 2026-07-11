@@ -188,9 +188,18 @@ class ChatConversation(BaseModel):
     TIPO_CHOICES = [
         ("direto", "Conversa direta"),
         ("grupo", "Grupo"),
+        ("suporte", "Atendimento ao cliente"),
         ("chamado", "Vinculado a chamado"),
         ("projeto", "Vinculado a projeto"),
         ("entidade", "Canal de entidade/cliente"),
+    ]
+
+    STATUS_CHOICES = [
+        ("aberta", "Aberta"),
+        ("aguardando_atendente", "Aguardando atendente"),
+        ("em_atendimento", "Em atendimento"),
+        ("aguardando_cliente", "Aguardando cliente"),
+        ("encerrada", "Encerrada"),
     ]
 
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="chat_conversations")
@@ -199,6 +208,15 @@ class ChatConversation(BaseModel):
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="created_conversations")
     last_message_at = models.DateTimeField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="aberta")
+    # Atendente responsável (fluxo de suporte: "assumir atendimento")
+    assigned_to = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assigned_conversations",
+    )
     name = models.CharField(max_length=255, blank=True, default="")
     ticket = models.ForeignKey(
         "tickets.Ticket",

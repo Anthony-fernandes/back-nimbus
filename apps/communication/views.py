@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import mixins
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -418,7 +418,7 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
     queryset = ChatConversation.objects.all()
     serializer_class = ChatConversationSerializer
     permission_classes = [IsAuthenticated]
-    filterset_fields = ["created_by"]
+    filterset_fields = ["created_by", "tipo", "status", "is_archived"]
     ordering_fields = "__all__"
 
     def get_queryset(self):
@@ -426,12 +426,154 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
         company = getattr(user, "company", None)
         if not company:
             return self.queryset.none()
-        return self.queryset.filter(company=company, participants=user)
+        base = self.queryset.filter(company=company)
+        if _is_client(user):
+            return base.filter(participants=user)
+        # Internos veem as próprias conversas + a fila de atendimento ao cliente
+        return base.filter(
+            models.Q(participants=user) | models.Q(tipo="suporte")
+        ).distinct()
 
-    def perform_create(self, serializer):
-        user = self.request.user
-        conversation = serializer.save(company=user.company, created_by=user)
+    def _system_message(self, conversation, text):
+        """Registro de evento no histórico da conversa (autor=None → Sistema)."""
+        ChatMessage.objects.create(conversation=conversation, author=None, content=text)
+
+    def _clean_participants(self, user, participant_ids):
+        """Só usuários ativos da MESMA empresa; nunca o próprio usuário duplicado."""
+        from apps.users.models import User as UserModel
+
+        users = list(
+            UserModel.objects.filter(
+                id__in=participant_ids,
+                company=user.company,
+                is_active=True,
+            ).exclude(id=user.id)
+        )
+        return users
+
+    def create(self, request, *args, **kwargs):
+        user = request.user
+        tipo = str(request.data.get("tipo") or "direto")
+
+        if _is_client(user) and tipo in ("direto", "grupo"):
+            raise PermissionDenied(
+                "Clientes iniciam atendimento pelo botão 'Falar com suporte'."
+            )
+
+        raw_ids = request.data.get("participants") or []
+        participants = self._clean_participants(user, raw_ids)
+        if tipo in ("direto", "grupo") and not participants:
+            raise ValidationError({"participants": "Selecione ao menos um participante válido."})
+        if tipo == "direto" and len(participants) > 1:
+            tipo = "grupo"
+
+        # Dedupe: conversa direta com a mesma dupla já existente → devolve a existente
+        if tipo == "direto":
+            other = participants[0]
+            candidates = (
+                ChatConversation.objects.filter(
+                    company=user.company, tipo="direto", is_archived=False,
+                    participants=user, deleted_at__isnull=True,
+                )
+                .filter(participants=other)
+                .prefetch_related("participants")
+            )
+            existing = next((c for c in candidates if c.participants.count() == 2), None)
+            if existing:
+                data = self.get_serializer(existing).data
+                data["duplicate"] = True
+                return Response(data, status=200)
+
+        conversation = ChatConversation.objects.create(
+            company=user.company,
+            created_by=user,
+            tipo=tipo,
+            name=str(request.data.get("name") or ""),
+            status="aberta",
+        )
+        conversation.participants.add(user, *participants)
+        initial = str(request.data.get("initial_message") or "").strip()
+        if initial:
+            msg = ChatMessage.objects.create(conversation=conversation, author=user, content=initial)
+            msg.read_by.add(user)
+            conversation.last_message_at = timezone.now()
+            conversation.save(update_fields=["last_message_at", "updated_at"])
+        return Response(self.get_serializer(conversation).data, status=201)
+
+    @action(detail=False, methods=["post"], url_path="start-support")
+    def start_support(self, request):
+        """Cliente (ou interno em nome dele) abre atendimento com a fila de suporte."""
+        user = request.user
+        existing = (
+            ChatConversation.objects.filter(
+                company=user.company, tipo="suporte", participants=user,
+                deleted_at__isnull=True,
+            )
+            .exclude(status="encerrada")
+            .filter(is_archived=False)
+            .first()
+        )
+        if existing:
+            data = self.get_serializer(existing).data
+            data["duplicate"] = True
+            return Response(data, status=200)
+
+        conversation = ChatConversation.objects.create(
+            company=user.company,
+            created_by=user,
+            tipo="suporte",
+            status="aguardando_atendente",
+            client=getattr(user, "client", None),
+            name="",
+        )
         conversation.participants.add(user)
+        self._system_message(conversation, "Atendimento iniciado. Aguardando um atendente assumir.")
+        initial = str(request.data.get("initial_message") or "").strip()
+        if initial:
+            msg = ChatMessage.objects.create(conversation=conversation, author=user, content=initial)
+            msg.read_by.add(user)
+        conversation.last_message_at = timezone.now()
+        conversation.save(update_fields=["last_message_at", "updated_at"])
+        return Response(self.get_serializer(conversation).data, status=201)
+
+    @action(detail=True, methods=["post"], url_path="assume")
+    def assume(self, request, pk=None):
+        """Técnico assume o atendimento (fila de suporte)."""
+        conversation = self.get_object()
+        user = request.user
+        if _is_client(user):
+            raise PermissionDenied("Clientes não podem assumir atendimentos.")
+        if conversation.assigned_to_id and conversation.assigned_to_id != user.id and not request.data.get("force"):
+            raise ValidationError(
+                {"detail": f"Atendimento já assumido por {conversation.assigned_to.full_name_or_username}."}
+            )
+        conversation.assigned_to = user
+        conversation.status = "em_atendimento"
+        conversation.participants.add(user)
+        conversation.save(update_fields=["assigned_to", "status", "updated_at"])
+        self._system_message(conversation, f"{user.full_name_or_username} assumiu o atendimento.")
+        return Response(self.get_serializer(conversation).data)
+
+    @action(detail=True, methods=["post"], url_path="close")
+    def close(self, request, pk=None):
+        """Encerra o atendimento (histórico preservado)."""
+        conversation = self.get_object()
+        user = request.user
+        if _is_client(user) and conversation.created_by_id != user.id:
+            raise PermissionDenied("Você não pode encerrar esta conversa.")
+        conversation.status = "encerrada"
+        conversation.save(update_fields=["status", "updated_at"])
+        self._system_message(conversation, f"Conversa encerrada por {user.full_name_or_username}.")
+        return Response(self.get_serializer(conversation).data)
+
+    @action(detail=True, methods=["post"], url_path="mark-read")
+    def mark_read(self, request, pk=None):
+        """Marca todas as mensagens da conversa como lidas pelo usuário (em lote)."""
+        conversation = self.get_object()
+        unread = conversation.messages.exclude(read_by=request.user)
+        for message in unread:
+            message.read_by.add(request.user)
+        return Response({"status": "ok", "marked": unread.count()})
 
     @action(detail=True, methods=["post"], url_path="send-message")
     def send_message(self, request, pk=None):
@@ -490,7 +632,13 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
                 note_type="internal",
             )
         conversation.ticket = ticket
-        conversation.save(update_fields=["ticket", "updated_at"])
+        if conversation.tipo == "suporte" and conversation.status in ("aberta", "aguardando_atendente"):
+            conversation.status = "em_atendimento"
+            conversation.assigned_to = conversation.assigned_to or user
+            conversation.save(update_fields=["ticket", "status", "assigned_to", "updated_at"])
+        else:
+            conversation.save(update_fields=["ticket", "updated_at"])
+        self._system_message(conversation, f"Chamado {ticket.code or ticket.id} criado a partir desta conversa.")
         return Response(TicketSerializer(ticket).data, status=201)
 
     @action(detail=True, methods=["post"], url_path="archive")
@@ -502,7 +650,15 @@ class ChatConversationViewSet(CompanyScopedModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="mark-unread")
     def mark_unread(self, request, pk=None):
-        # Simply return OK — frontend tracks unread state locally
+        """Volta a última mensagem de outra pessoa para não lida."""
+        conversation = self.get_object()
+        last = (
+            conversation.messages.exclude(author=request.user)
+            .order_by("-created_at")
+            .first()
+        )
+        if last:
+            last.read_by.remove(request.user)
         return Response({"status": "ok"})
 
 
