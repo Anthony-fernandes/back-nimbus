@@ -106,6 +106,25 @@ class EmailTemplateViewSet(CompanyScopedModelViewSet):
     def get_queryset(self):
         return EmailTemplate.objects.filter(company=self.request.user.company, deleted_at__isnull=True)
 
+    def _ensure_can_manage(self):
+        from common.access import user_has_any_permission
+        from rest_framework.exceptions import PermissionDenied
+        if user_has_any_permission(self.request.user, ["settings.edit"]):
+            return
+        raise PermissionDenied("Seu perfil nao pode alterar templates de e-mail.")
+
+    def perform_create(self, serializer):
+        self._ensure_can_manage()
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._ensure_can_manage()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_can_manage()
+        instance.delete()
+
     @action(detail=False, methods=["get"], url_path="available-events")
     def available_events(self, request):
         from apps.notifications.email_templates import DEFAULT_EMAIL_TEMPLATES, EVENT_LABEL

@@ -32,7 +32,29 @@ from .serializers import (
 )
 
 
-class KnowledgeCategoryViewSet(CompanyScopedModelViewSet):
+class _KnowledgeManageWriteMixin:
+    """Escritas restritas a quem pode gerenciar a base de conhecimento."""
+
+    def _ensure_can_manage(self):
+        from rest_framework.exceptions import PermissionDenied
+        if _can_manage_knowledge(self.request.user):
+            return
+        raise PermissionDenied("Seu perfil nao pode alterar o catalogo da base de conhecimento.")
+
+    def perform_create(self, serializer):
+        self._ensure_can_manage()
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        self._ensure_can_manage()
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        self._ensure_can_manage()
+        instance.delete()
+
+
+class KnowledgeCategoryViewSet(_KnowledgeManageWriteMixin, CompanyScopedModelViewSet):
     queryset = KnowledgeCategory.objects.all()
     serializer_class = KnowledgeCategorySerializer
     permission_classes = [IsAuthenticated]
@@ -41,7 +63,7 @@ class KnowledgeCategoryViewSet(CompanyScopedModelViewSet):
     ordering_fields = "__all__"
 
 
-class KnowledgeTagViewSet(CompanyScopedModelViewSet):
+class KnowledgeTagViewSet(_KnowledgeManageWriteMixin, CompanyScopedModelViewSet):
     queryset = KnowledgeTag.objects.all()
     serializer_class = KnowledgeTagSerializer
     permission_classes = [IsAuthenticated]

@@ -1130,6 +1130,13 @@ class TicketApprovalViewSet(CompanyScopedModelViewSet):
     ordering_fields = "__all__"
 
 
+def _ensure_settings_edit(user, what: str) -> None:
+    """Escritas em cadastros administrativos exigem settings.edit."""
+    if user_has_any_permission(user, ["settings.edit"]):
+        return
+    raise PermissionDenied(f"Seu perfil nao pode alterar {what}.")
+
+
 class SLAPolicyViewSet(CompanyScopedModelViewSet):
     permission_classes = [IsAuthenticated]
     filterset_fields = ["active", "priority", "category"]
@@ -1144,7 +1151,16 @@ class SLAPolicyViewSet(CompanyScopedModelViewSet):
         return SLAPolicySerializer
 
     def perform_create(self, serializer):
+        _ensure_settings_edit(self.request.user, "politicas de SLA")
         serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        _ensure_settings_edit(self.request.user, "politicas de SLA")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        _ensure_settings_edit(self.request.user, "politicas de SLA")
+        instance.delete()
 
     @action(detail=False, methods=["get"], url_path="alerts")
     def alerts(self, request):
@@ -1166,7 +1182,16 @@ class TicketTemplateViewSet(CompanyScopedModelViewSet):
         return TicketTemplateSerializer
 
     def perform_create(self, serializer):
+        _ensure_settings_edit(self.request.user, "modelos de chamado")
         serializer.save(company=self.request.user.company)
+
+    def perform_update(self, serializer):
+        _ensure_settings_edit(self.request.user, "modelos de chamado")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        _ensure_settings_edit(self.request.user, "modelos de chamado")
+        instance.delete()
 
 
 class TicketCustomFieldViewSet(CompanyScopedModelViewSet):
@@ -1374,6 +1399,18 @@ class TicketAutomationRuleViewSet(CompanyScopedModelViewSet):
     serializer_class = TicketAutomationRuleSerializer
     queryset = TicketAutomationRule.objects.all()
 
+    def perform_create(self, serializer):
+        _ensure_settings_edit(self.request.user, "automacoes")
+        super().perform_create(serializer)
+
+    def perform_update(self, serializer):
+        _ensure_settings_edit(self.request.user, "automacoes")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        _ensure_settings_edit(self.request.user, "automacoes")
+        instance.delete()
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # InboundMailbox
@@ -1383,8 +1420,17 @@ class InboundMailboxViewSet(CompanyScopedModelViewSet):
     queryset = InboundMailbox.objects.all()
 
     def perform_create(self, serializer):
+        _ensure_settings_edit(self.request.user, "caixas de entrada")
         token = secrets.token_urlsafe(32)
         serializer.save(company=self.request.user.company, webhook_token=token)
+
+    def perform_update(self, serializer):
+        _ensure_settings_edit(self.request.user, "caixas de entrada")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        _ensure_settings_edit(self.request.user, "caixas de entrada")
+        instance.delete()
 
 
 @api_view(["POST"])
