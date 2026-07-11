@@ -120,6 +120,11 @@ class Ticket(BaseModel):
         related_name="owned_tickets",
     )
     category = models.CharField(max_length=80, blank=True, default="Atendimento")
+    subcategory = models.CharField(max_length=120, blank=True, default="")
+    # Serviço/módulo afetado informado na abertura (Portal do Cliente)
+    affected_service = models.CharField(max_length=120, blank=True, default="")
+    preferred_contact_time = models.CharField(max_length=60, blank=True, default="")
+    preferred_contact_channel = models.CharField(max_length=30, blank=True, default="")
     type = models.CharField(max_length=80, choices=ITIL_TYPES, default="Incidente")
     priority = models.CharField(max_length=30, choices=PRIORITY, default="Media")
     impact = models.CharField(max_length=30, choices=IMPACT_CHOICES, default="Médio")
@@ -370,6 +375,8 @@ class TicketCategory(BaseModel):
     requires_client_validation = models.BooleanField(default=False)
     color = models.CharField(max_length=20, blank=True, default="")
     icon = models.CharField(max_length=60, blank=True, default="")
+    # Subcategorias desta categoria (lista de strings) — usadas no Portal do Cliente
+    subcategories = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ["name"]
@@ -377,6 +384,46 @@ class TicketCategory(BaseModel):
 
     def __str__(self):
         return self.name
+
+
+# Campos configuráveis do formulário de abertura no Portal do Cliente.
+# Cada chave define {visible, required}; o backend valida com base nisso.
+DEFAULT_PORTAL_FORM_FIELDS = {
+    "title": {"visible": True, "required": True},
+    "description": {"visible": True, "required": True},
+    "category": {"visible": True, "required": False},
+    "subcategory": {"visible": True, "required": False},
+    "department": {"visible": True, "required": False},
+    "request_type": {"visible": True, "required": False},
+    "affected_service": {"visible": False, "required": False},
+    "urgency": {"visible": True, "required": True},
+    "impact": {"visible": True, "required": True},
+    "contact_phone": {"visible": True, "required": False},
+    "preferred_contact_time": {"visible": False, "required": False},
+    "preferred_contact_channel": {"visible": False, "required": False},
+    "attachments": {"visible": True, "required": False},
+}
+
+
+class TicketPortalFormConfig(BaseModel):
+    """Configuração (por empresa) do formulário de abertura do Portal do Cliente."""
+
+    company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name="portal_form_config")
+    fields = models.JSONField(default=dict, blank=True)
+
+    def resolved_fields(self) -> dict:
+        merged = {key: dict(value) for key, value in DEFAULT_PORTAL_FORM_FIELDS.items()}
+        for key, value in (self.fields or {}).items():
+            if key in merged and isinstance(value, dict):
+                merged[key].update({k: bool(v) for k, v in value.items() if k in ("visible", "required")})
+        return merged
+
+    @classmethod
+    def resolved_for_company(cls, company) -> dict:
+        config = cls.objects.filter(company=company, deleted_at__isnull=True).first()
+        if config:
+            return config.resolved_fields()
+        return {key: dict(value) for key, value in DEFAULT_PORTAL_FORM_FIELDS.items()}
 
 
 class TicketTemplate(BaseModel):

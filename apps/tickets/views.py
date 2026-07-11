@@ -54,6 +54,8 @@ def _ticket_link(ticket):
 
 
 class TicketViewSet(CompanyScopedModelViewSet):
+    # pk é UUID; sem isso o detail captura rotas irmãs como reports/ e portal-form-config/
+    lookup_value_regex = "[0-9a-fA-F-]{32,36}"
     queryset = (
         Ticket.objects.all()
         .select_related('requester_user', 'responsible_technician', 'current_approver', 'client', 'project')
@@ -202,6 +204,64 @@ class TicketViewSet(CompanyScopedModelViewSet):
 
         return queryset.filter(approval_scope).distinct()
 
+    # Campos do formulário do portal → campo/valor no request de criação
+    _PORTAL_FIELD_SOURCES = {
+        "title": "title",
+        "description": "description",
+        "category": "category",
+        "subcategory": "subcategory",
+        "department": "department",
+        "request_type": "type",
+        "affected_service": "affected_service",
+        "urgency": "urgency",
+        "impact": "impact",
+        "contact_phone": "contact_responsible_phone",
+        "preferred_contact_time": "preferred_contact_time",
+        "preferred_contact_channel": "preferred_contact_channel",
+    }
+
+    # Campos internos que o cliente nunca controla na abertura
+    _PORTAL_INTERNAL_FIELDS = (
+        "priority",
+        "responsible_technician",
+        "technicians",
+        "team",
+        "team_ref",
+        "sla",
+        "sla_due_at",
+        "project",
+        "sprint",
+        "current_approver",
+        "est_hours",
+        "done_hours",
+    )
+
+    def _validate_portal_create(self, serializer):
+        """Valida a abertura pelo Portal do Cliente conforme a configuração admin."""
+        from .models import TicketPortalFormConfig
+
+        config = TicketPortalFormConfig.resolved_for_company(self.request.user.company)
+        errors = {}
+        for field_key, source in self._PORTAL_FIELD_SOURCES.items():
+            rules = config.get(field_key) or {}
+            value = self.request.data.get(source)
+            if rules.get("required") and rules.get("visible") and not str(value or "").strip():
+                errors[source] = "Campo obrigatório na abertura de chamado."
+            # Campo oculto no portal não pode ser enviado pelo cliente (exceto vazios)
+            if not rules.get("visible") and str(value or "").strip():
+                errors[source] = "Campo não disponível no portal do cliente."
+        if config.get("attachments", {}).get("required") and not self.request.data.get(
+            "has_attachments"
+        ):
+            # O upload acontece após a criação; o portal envia has_attachments=true
+            errors["attachments"] = "Anexo obrigatório na abertura de chamado."
+        if errors:
+            raise ValidationError(errors)
+
+        # Campos internos nunca vêm do cliente
+        for internal in self._PORTAL_INTERNAL_FIELDS:
+            serializer.validated_data.pop(internal, None)
+
     def perform_create(self, serializer):
         self._ensure_can_create()
         role = normalize_user_role(getattr(self.request.user, "role", None))
@@ -212,6 +272,16 @@ class TicketViewSet(CompanyScopedModelViewSet):
                 raise PermissionDenied(
                     "Usuarios do portal do cliente so podem abrir chamados na propria organizacao."
                 )
+
+            self._validate_portal_create(serializer)
+
+            # Sem categoria → entra pendente de triagem
+            status_value = serializer.validated_data.get("status") or "Aberto"
+            if not str(serializer.validated_data.get("category") or "").strip():
+                if status_value not in ("Aguardando Aprovacao",):
+                    serializer.validated_data["status"] = "Triagem"
+                serializer.validated_data["category"] = ""
+            serializer.validated_data["source"] = "portal"
 
             serializer.save(
                 company=self.request.user.company,
@@ -1210,6 +1280,77 @@ class TicketCustomFieldViewSet(CompanyScopedModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class TicketPortalFormConfigView(APIView):
+    """Configuração do formulário de abertura do Portal do Cliente.
+
+    GET: qualquer usuário autenticado (o portal precisa renderizar o formulário).
+    PUT: exige settings.edit.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from apps.users.models import Department
+        from .models import TicketCategory, TicketPortalFormConfig
+
+        # Catálogos que o cliente precisa para preencher o formulário — expostos
+        # aqui porque o portal não tem acesso aos endpoints internos.
+        categories = [
+            {
+                "id": str(c.id),
+                "name": c.name,
+                "description": c.description,
+                "subcategories": c.subcategories or [],
+                "default_type": c.default_type,
+                "approval_required": c.approval_required,
+                "sla": c.sla,
+            }
+            for c in TicketCategory.objects.filter(
+                company=request.user.company, active=True, deleted_at__isnull=True
+            ).order_by("name")
+        ]
+        departments = [
+            {
+                "id": str(d.id),
+                "name": d.name,
+                "manager_name": d.manager.full_name_or_username if d.manager else "",
+            }
+            for d in Department.objects.filter(
+                company=request.user.company, active=True, deleted_at__isnull=True
+            ).select_related("manager").order_by("name")
+        ]
+        return Response(
+            {
+                "fields": TicketPortalFormConfig.resolved_for_company(request.user.company),
+                "categories": categories,
+                "departments": departments,
+            }
+        )
+
+    def put(self, request):
+        from .models import DEFAULT_PORTAL_FORM_FIELDS, TicketPortalFormConfig
+
+        _ensure_settings_edit(request.user, "o formulário do portal do cliente")
+        incoming = request.data.get("fields") or {}
+        if not isinstance(incoming, dict):
+            raise ValidationError({"fields": "Formato inválido."})
+        cleaned = {}
+        for key, value in incoming.items():
+            if key not in DEFAULT_PORTAL_FORM_FIELDS or not isinstance(value, dict):
+                continue
+            cleaned[key] = {
+                "visible": bool(value.get("visible", DEFAULT_PORTAL_FORM_FIELDS[key]["visible"])),
+                "required": bool(value.get("required", DEFAULT_PORTAL_FORM_FIELDS[key]["required"])),
+            }
+            # Obrigatório implica visível
+            if cleaned[key]["required"]:
+                cleaned[key]["visible"] = True
+        config, _ = TicketPortalFormConfig.objects.get_or_create(company=request.user.company)
+        config.fields = cleaned
+        config.save(update_fields=["fields", "updated_at"])
+        return Response({"fields": config.resolved_fields()})
 
 
 class TicketReportsView(APIView):

@@ -89,6 +89,7 @@ class TicketSerializer(serializers.ModelSerializer):
         source="approved_by.full_name_or_username",
         read_only=True,
     )
+    classification_pending = serializers.SerializerMethodField()
 
     class Meta:
         model = Ticket
@@ -119,6 +120,11 @@ class TicketSerializer(serializers.ModelSerializer):
             "responsible_technician",
             "responsible_technician_name",
             "category",
+            "subcategory",
+            "affected_service",
+            "preferred_contact_time",
+            "preferred_contact_channel",
+            "classification_pending",
             "type",
             "priority",
             "impact",
@@ -187,6 +193,10 @@ class TicketSerializer(serializers.ModelSerializer):
 
     def get_technician_names(self, obj):
         return [user.full_name_or_username for user in obj.technicians.all()]
+
+    def get_classification_pending(self, obj):
+        """Chamado do portal ainda sem classificação de triagem (categoria ausente)."""
+        return obj.status in ("Aberto", "Triagem") and not (obj.category or "").strip()
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

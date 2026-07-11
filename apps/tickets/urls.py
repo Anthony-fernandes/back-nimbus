@@ -8,6 +8,7 @@ from .views import (
     TicketAutomationRuleViewSet,
     TicketCustomFieldViewSet,
     TicketRelationViewSet,
+    TicketPortalFormConfigView,
     TicketReportsView,
     TicketStatusHistoryViewSet,
     TicketTemplateViewSet,
@@ -31,6 +32,7 @@ router.register("", TicketViewSet, basename="tickets")
 
 urlpatterns = router.urls + [
     path("reports/", TicketReportsView.as_view(), name="ticket-reports"),
+    path("portal-form-config/", TicketPortalFormConfigView.as_view(), name="ticket-portal-form-config"),
     path("<uuid:pk>/reopen/", reopen_ticket, name="ticket-reopen"),
     path("inbound/<str:token>/", inbound_email_webhook, name="inbound-email-webhook"),
 ]
