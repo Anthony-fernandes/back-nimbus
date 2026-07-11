@@ -255,6 +255,46 @@ class TicketViewSet(CompanyScopedModelViewSet):
         ):
             # O upload acontece após a criação; o portal envia has_attachments=true
             errors["attachments"] = "Anexo obrigatório na abertura de chamado."
+        # Regras próprias da categoria escolhida (subcategoria/anexo obrigatórios
+        # e campos extras exigidos no portal)
+        from .models import TicketCategory, TicketCustomField
+
+        category_name = str(self.request.data.get("category") or "").strip()
+        category_obj = (
+            TicketCategory.objects.filter(
+                company=self.request.user.company, name=category_name, deleted_at__isnull=True
+            ).first()
+            if category_name
+            else None
+        )
+        if category_obj:
+            if category_obj.subcategory_required and not str(
+                self.request.data.get("subcategory") or ""
+            ).strip():
+                errors["subcategory"] = "Subcategoria obrigatória para esta categoria."
+            if category_obj.attachment_required and not self.request.data.get("has_attachments"):
+                errors["attachments"] = "Anexo obrigatório para esta categoria."
+
+        custom_values = self.request.data.get("custom_values") or {}
+        if not isinstance(custom_values, dict):
+            custom_values = {}
+        required_extras = TicketCustomField.objects.filter(
+            company=self.request.user.company,
+            active=True,
+            visible_to_client=True,
+            required=True,
+            deleted_at__isnull=True,
+        )
+        if category_obj:
+            required_extras = required_extras.filter(
+                Q(category__isnull=True) | Q(category=category_obj)
+            )
+        else:
+            required_extras = required_extras.filter(category__isnull=True)
+        for field in required_extras:
+            if not str(custom_values.get(str(field.id)) or "").strip():
+                errors[f"custom_values.{field.id}"] = f"Campo obrigatório: {field.label}."
+
         if errors:
             raise ValidationError(errors)
 
@@ -1297,15 +1337,42 @@ class TicketPortalFormConfigView(APIView):
 
         # Catálogos que o cliente precisa para preencher o formulário — expostos
         # aqui porque o portal não tem acesso aos endpoints internos.
+        from .models import TicketCustomField
+
+        client_fields = list(
+            TicketCustomField.objects.filter(
+                company=request.user.company,
+                active=True,
+                visible_to_client=True,
+                deleted_at__isnull=True,
+            ).order_by("order", "name")
+        )
+
+        def _extra_fields(category_id):
+            return [
+                {
+                    "id": str(f.id),
+                    "label": f.label,
+                    "field_type": f.field_type,
+                    "options": f.options or [],
+                    "required": f.required,
+                }
+                for f in client_fields
+                if f.category_id is None or str(f.category_id) == str(category_id)
+            ]
+
         categories = [
             {
                 "id": str(c.id),
                 "name": c.name,
                 "description": c.description,
                 "subcategories": c.subcategories or [],
+                "subcategory_required": c.subcategory_required,
+                "attachment_required": c.attachment_required,
                 "default_type": c.default_type,
                 "approval_required": c.approval_required,
                 "sla": c.sla,
+                "extra_fields": _extra_fields(c.id),
             }
             for c in TicketCategory.objects.filter(
                 company=request.user.company, active=True, deleted_at__isnull=True

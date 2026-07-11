@@ -127,3 +127,118 @@ class PortalFormConfigTest(TestCase):
         self.assertEqual(ticket.status, "Aberto")
         self.assertEqual(ticket.subcategory, "Bloqueio de usuário")
         self.assertFalse(resp.data["classification_pending"])
+
+
+class CategoryRulesTest(TestCase):
+    """Regras próprias da categoria: subcategoria/anexo obrigatórios e campos extras."""
+
+    def setUp(self):
+        self.factory = APIRequestFactory()
+        self.company = Company.objects.create(name="Rules Co")
+        self.org = Client.objects.create(company=self.company, name="Org")
+        self.client_user = User.objects.create_user(
+            username="cli@rules.co", email="cli@rules.co", password="x",
+            company=self.company, role="CLIENT", client=self.org,
+        )
+        self.category = TicketCategory.objects.create(
+            company=self.company, name="Erro no sistema",
+            subcategories=["Erro visual", "Erro de dados"],
+            subcategory_required=True, attachment_required=True,
+        )
+
+    def _create(self, payload):
+        req = self.factory.post("/api/tickets/", payload, format="json")
+        force_authenticate(req, self.client_user)
+        return TicketViewSet.as_view({"post": "create"})(req)
+
+    def _base(self, **extra):
+        base = {"title": "x", "description": "d", "client": str(self.org.id),
+                "category": "Erro no sistema", "urgency": "Média", "impact": "Baixo"}
+        base.update(extra)
+        return base
+
+    def _detail(self, resp):
+        return resp.data.get("error", {}).get("detail", resp.data)
+
+    def test_category_requires_subcategory_and_attachment(self):
+        resp = self._create(self._base())
+        self.assertEqual(resp.status_code, 400)
+        detail = self._detail(resp)
+        self.assertIn("subcategory", detail)
+        self.assertIn("attachments", detail)
+
+        resp = self._create(self._base(subcategory="Erro visual", has_attachments=True))
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_required_client_custom_field(self):
+        from apps.tickets.models import TicketCustomField, TicketCustomValue
+        field = TicketCustomField.objects.create(
+            company=self.company, name="mensagem_erro", label="Mensagem de erro",
+            field_type="text", required=True, visible_to_client=True, category=self.category,
+        )
+        resp = self._create(self._base(subcategory="Erro visual", has_attachments=True))
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn(f"custom_values.{field.id}", self._detail(resp))
+
+        resp = self._create(self._base(
+            subcategory="Erro visual", has_attachments=True,
+            custom_values={str(field.id): "ORA-00942"},
+        ))
+        self.assertEqual(resp.status_code, 201, resp.data)
+        ticket = Ticket.objects.get(id=resp.data["id"])
+        value = TicketCustomValue.objects.get(ticket=ticket, field=field)
+        self.assertEqual(value.value, "ORA-00942")
+
+    def test_custom_field_of_other_category_not_required(self):
+        other = TicketCategory.objects.create(company=self.company, name="Acesso")
+        from apps.tickets.models import TicketCustomField
+        TicketCustomField.objects.create(
+            company=self.company, name="modulo", label="Módulo desejado",
+            field_type="text", required=True, visible_to_client=True, category=other,
+        )
+        resp = self._create(self._base(subcategory="Erro visual", has_attachments=True))
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+
+class SLASubcategoryTest(TestCase):
+    def setUp(self):
+        self.company = Company.objects.create(name="SLA Sub Co")
+        self.org = Client.objects.create(company=self.company, name="Org")
+
+    def test_subcategory_policy_wins_over_category(self):
+        from apps.tickets.models import SLAPolicy
+        from apps.tickets.sla import compute_sla_due_at
+        SLAPolicy.objects.create(company=self.company, name="Acesso geral", category="Acesso", response_time="8h")
+        SLAPolicy.objects.create(
+            company=self.company, name="Bloqueio", category="Acesso",
+            subcategory="Bloqueio de usuário", response_time="1h",
+        )
+        t_generic = Ticket.objects.create(
+            company=self.company, client=self.org, title="a", category="Acesso", priority="Media",
+        )
+        t_block = Ticket.objects.create(
+            company=self.company, client=self.org, title="b", category="Acesso",
+            subcategory="Bloqueio de usuário", priority="Media",
+        )
+        compute_sla_due_at(t_generic)
+        compute_sla_due_at(t_block)
+        self.assertLess(t_block.sla_due_at, t_generic.sla_due_at)
+
+    def test_subcategory_policy_does_not_match_other_subcategory(self):
+        from apps.tickets.models import SLAPolicy
+        from apps.tickets.sla import compute_sla_due_at
+        SLAPolicy.objects.create(
+            company=self.company, name="Bloqueio", category="Acesso",
+            subcategory="Bloqueio de usuário", response_time="1h",
+        )
+        t = Ticket.objects.create(
+            company=self.company, client=self.org, title="a", category="Acesso",
+            subcategory="Novo acesso", priority="Media", sla="8h",
+        )
+        compute_sla_due_at(t)
+        other = Ticket.objects.create(
+            company=self.company, client=self.org, title="b", category="Acesso",
+            subcategory="Bloqueio de usuário", priority="Media", sla="8h",
+        )
+        compute_sla_due_at(other)
+        self.assertLess(other.sla_due_at, t.sla_due_at)

@@ -43,6 +43,8 @@ def user_has_organization_link(user, organization):
 
 
 class TicketCustomFieldSerializer(serializers.ModelSerializer):
+    category_name = serializers.CharField(source="category.name", read_only=True, default="")
+
     class Meta:
         model = TicketCustomField
         fields = "__all__"
@@ -318,15 +320,27 @@ class TicketSerializer(serializers.ModelSerializer):
     def _save_custom_values(self, ticket, custom_values_data):
         if custom_values_data is None:
             return
+        # Aceita lista [{field_id, value}] (telas internas) ou dict {field_id: valor} (portal)
+        if isinstance(custom_values_data, dict):
+            custom_values_data = [
+                {"field_id": key, "value": value} for key, value in custom_values_data.items()
+            ]
         for entry in custom_values_data:
+            if not isinstance(entry, dict):
+                continue
             field_id = entry.get("field_id") or (entry.get("field").id if entry.get("field") else None)
             value = entry.get("value", "")
-            if field_id:
-                TicketCustomValue.objects.update_or_create(
-                    ticket=ticket,
-                    field_id=field_id,
-                    defaults={"value": value},
-                )
+            if not field_id:
+                continue
+            # Campo precisa pertencer à mesma empresa do chamado (isolamento de tenant)
+            field = TicketCustomField.objects.filter(id=field_id, company=ticket.company).first()
+            if not field:
+                continue
+            TicketCustomValue.objects.update_or_create(
+                ticket=ticket,
+                field=field,
+                defaults={"value": str(value or "")},
+            )
 
     def create(self, validated_data):
         technicians = validated_data.pop("technicians", [])

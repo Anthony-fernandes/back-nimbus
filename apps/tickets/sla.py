@@ -101,6 +101,8 @@ def _policy_specificity(policy, ticket) -> int:
     score = 0
     if policy.client_id and getattr(ticket, "client_id", None) == policy.client_id:
         score += 100
+    if policy.subcategory and policy.subcategory == (getattr(ticket, "subcategory", "") or ""):
+        score += 30
     if policy.category and policy.category == (ticket.category or ""):
         score += 10
     if policy.priority and policy.priority == (ticket.priority or ""):
@@ -145,6 +147,8 @@ def models_filter(ticket):
         q &= Q(priority=ticket.priority) | Q(priority="")
     if ticket.category:
         q &= Q(category=ticket.category) | Q(category="")
+    # Política com subcategoria só casa com o chamado daquela subcategoria
+    q &= Q(subcategory="") | Q(subcategory=(getattr(ticket, "subcategory", "") or ""))
     # Política de cliente só se aplica ao próprio cliente; políticas sem cliente valem para todos.
     client_id = getattr(ticket, "client_id", None)
     if client_id:

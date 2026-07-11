@@ -377,6 +377,9 @@ class TicketCategory(BaseModel):
     icon = models.CharField(max_length=60, blank=True, default="")
     # Subcategorias desta categoria (lista de strings) — usadas no Portal do Cliente
     subcategories = models.JSONField(default=list, blank=True)
+    # Regras próprias da categoria na abertura pelo Portal do Cliente
+    subcategory_required = models.BooleanField(default=False)
+    attachment_required = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["name"]
@@ -459,6 +462,16 @@ class TicketCustomField(BaseModel):
     required = models.BooleanField(default=False)
     active = models.BooleanField(default=True)
     order = models.PositiveIntegerField(default=0)
+    # Campo extra vinculado a uma categoria (None = vale para todas)
+    category = models.ForeignKey(
+        "TicketCategory",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="custom_fields",
+    )
+    # Exibido (e exigido, se required) no formulário do Portal do Cliente
+    visible_to_client = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["order", "name"]
@@ -493,6 +506,7 @@ class SLAPolicy(BaseModel):
     name = models.CharField(max_length=200)
     priority = models.CharField(max_length=30, choices=PRIORITY_CHOICES, blank=True, default="")
     category = models.CharField(max_length=80, blank=True, default="")
+    subcategory = models.CharField(max_length=120, blank=True, default="")
     response_time = models.CharField(max_length=20, default="8h", help_text="Ex: 2h, 1d, 30m")
     priority_weight = models.IntegerField(default=0)
     active = models.BooleanField(default=True)
